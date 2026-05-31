@@ -28,6 +28,7 @@ import csv
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -105,7 +106,9 @@ def main():
                     help="runs per (version, threads); best is kept.")
     ap.add_argument("--versions", nargs="+", metavar="VER",
                     help="versions to sweep (default: all sweepable in bin/).")
-    ap.add_argument("-o", "--output", default=str(ROOT / "sweep.csv"))
+    ap.add_argument("-o", "--output", default=None,
+                    help="output CSV path. Default: sweep-<timestamp>.csv, "
+                         "so a run never overwrites an earlier one.")
     ap.add_argument("--plot", default=None, metavar="PNG",
                     help="plot path (default: alongside the CSV as .png).")
     ap.add_argument("--no-plot", action="store_true", help="skip the chart.")
@@ -113,6 +116,12 @@ def main():
                     help="do not run `make` first.")
     ap.add_argument("--show", action="store_true", help="open a window too.")
     args = ap.parse_args()
+
+    # Timestamp the default output so long runs are never clobbered. An explicit
+    # -o is honored as given.
+    if args.output is None:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        args.output = str(ROOT / f"sweep-{stamp}.csv")
 
     threads = parse_threads(args.points)
     if 1 not in threads:

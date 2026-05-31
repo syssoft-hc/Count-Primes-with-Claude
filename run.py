@@ -23,6 +23,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -75,8 +76,9 @@ def main():
                     help="thread count for CPU versions (0 = auto).")
     ap.add_argument("-r", "--repeats", type=int, default=3,
                     help="runs per version; best & median are recorded.")
-    ap.add_argument("-o", "--output", default=str(ROOT / "results.csv"),
-                    help="output CSV path.")
+    ap.add_argument("-o", "--output", default=None,
+                    help="output CSV path. Default: results-<timestamp>.csv, "
+                         "so a run never overwrites an earlier one.")
     ap.add_argument("--only", nargs="+", metavar="VER",
                     help="only run these versions.")
     ap.add_argument("--skip", nargs="+", metavar="VER", default=[],
@@ -88,6 +90,12 @@ def main():
                     help="after benchmarking, render a bar chart. Optionally "
                          "give a path (default: results.png next to the CSV).")
     args = ap.parse_args()
+
+    # Timestamp the default output so long runs are never clobbered. An explicit
+    # -o is honored as given.
+    if args.output is None:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        args.output = str(ROOT / f"results-{stamp}.csv")
 
     if not args.no_build:
         if shutil.which("make") is None:

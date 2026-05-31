@@ -73,7 +73,9 @@ python3 run.py --plot chart.png # ... to a chosen path
 ```
 
 `run.py` builds (`make`), runs each version, **verifies every version agrees on
-the prime count**, prints a table, and writes `results.csv`:
+the prime count**, prints a table, and writes a timestamped CSV
+(`results-<YYYYmmdd-HHMMSS>.csv`) so a long run never overwrites an earlier one.
+Pass `-o name.csv` to choose the path explicitly. Example contents:
 
 ```
 version,N,threads,repeats,count,best_ms,median_ms,speedup_vs_seq
@@ -135,10 +137,16 @@ python3 sweep.py -n 50000000 -p 1,2,4,8,16
 python3 sweep.py --versions stripe atomic_dynamic
 ```
 
-It writes `sweep.csv` (one row per version × thread count, with `speedup_self`
-and parallel `efficiency = speedup / threads`) and `sweep.png`, a two-panel line
-plot: speedup vs threads (with an ideal `y = x` line) and efficiency. `seq` (always
-1 thread) and `opencl` (GPU work-items, not threads) are excluded.
+It writes a timestamped `sweep-<YYYYmmdd-HHMMSS>.csv` (one row per version ×
+thread count, with `speedup_self` and parallel `efficiency = speedup / threads`)
+and a matching `.png`, a two-panel line plot: speedup vs threads (with an ideal
+`y = x` line) and efficiency. Pass `-o name.csv` to choose the path. `seq`
+(always 1 thread) and `opencl` (GPU work-items, not threads) are excluded.
+
+Both runners timestamp their **default** output filenames, so the (often slow
+to produce) result files are never accidentally clobbered. Auto-timestamped
+files are git-ignored; rename one (e.g. `sweep_10e8.csv`, underscore) to keep it
+as a tracked snapshot.
 
 ### The striping trap — cyclic distribution can collide with the data
 

@@ -1,7 +1,13 @@
 bin/
+# auto-timestamped benchmark outputs (hyphen). Named snapshots like
+# copri_10e8.* / sweep_10e8.* use an underscore and stay tracked.
 results.csv
 results.png
+results-*.csv
+results-*.png
 sweep.csv
 sweep.png
+sweep-*.csv
+sweep-*.png
 __pycache__/
 .DS_Store
