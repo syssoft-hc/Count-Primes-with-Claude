@@ -1,0 +1,5 @@
+bin/
+results.csv
+results.png
+__pycache__/
+.DS_Store
