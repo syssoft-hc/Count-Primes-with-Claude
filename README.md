@@ -31,6 +31,7 @@ than small ones — which is exactly what makes **load balancing** interesting.
 | `atomic_counter` | one shared `std::atomic` counter | **contention**: an atomic per *prime* is the wrong granularity |
 | `atomic_dynamic` | atomic **work-stealing** cursor | dynamic scheduling: atomic per *chunk* → balance *and* low contention |
 | `openmp` | `#pragma omp parallel for` (optional) | the high-level equivalent of the hand-rolled versions |
+| `omp_target` | `#pragma omp target` GPU **offload** (optional) | the offload programming model — and why it falls back to the CPU here (see note) |
 | `opencl` | GPU, striped grid + host reduction | when offloading to the GPU **does and doesn't** pay off |
 
 All binaries share one CLI and output format:
@@ -53,11 +54,37 @@ make            # builds every available version into bin/
 make clean
 ```
 
-- **OpenMP** is optional. Apple clang has no bundled `omp.h`; the Makefile builds
-  `openmp` only if it finds a libomp install. To enable it: `brew install libomp`,
-  then `make`. Otherwise it is silently skipped and `run.py` ignores it.
+- **OpenMP** (`openmp` and `omp_target`) is optional. Apple clang has no bundled
+  `omp.h`; the Makefile builds these only if it finds a libomp install. To enable
+  them: `brew install libomp`, then `make`. Otherwise they are silently skipped
+  and `run.py` ignores them.
 - **OpenCL** uses the macOS framework (deprecated but functional). On Linux,
   install an OpenCL ICD and adjust the link flags in the Makefile.
+
+### `omp_target` and GPU offload — read this before trusting the number
+
+`omp_target` uses `#pragma omp target teams distribute parallel for`, the OpenMP
+way to offload a loop to a GPU. **On Apple Silicon it does not actually use the
+GPU.** OpenMP offloads only to NVPTX (NVIDIA), AMDGPU, or SPIR-V devices; the
+Apple GPU is reachable only via Metal/OpenCL, and no offload-capable LLVM ships
+for it. So here `omp_get_num_devices() == 0` and the `target` region transparently
+**falls back to the host CPU** — which is why its time is close to `openmp`, not
+to a GPU. The binary prints which path it took:
+
+```
+[omp_target] offload devices=0 -> target runs on HOST (CPU fallback)
+```
+
+The *same source* offloads to a real GPU on a machine with an NVIDIA/AMD card and
+an offload-enabled build, e.g.
+`clang++ -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda …`. It is included to
+teach the offload programming model and the portability/fallback story; for the
+real GPU path on this Mac, use `opencl`. (For that reason `omp_target` is left out
+of the `sweep.py` thread sweep, which is about CPU thread scaling.)
+
+The shared `is_prime()` stays a single implementation: `omp_target.cpp` includes
+`common/prime.hpp` inside a `#pragma omp declare target` region so the compiler
+also emits a device-side copy, rather than duplicating the function.
 
 ## Run the benchmark
 

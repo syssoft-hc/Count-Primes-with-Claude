@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent
 
 # Keep the canonical version order from run.py; unknown versions go last.
 ORDER = ["seq", "partition", "stripe", "atomic_counter",
-         "atomic_dynamic", "openmp", "opencl"]
+         "atomic_dynamic", "openmp", "omp_target", "opencl"]
 
 
 def load(path):

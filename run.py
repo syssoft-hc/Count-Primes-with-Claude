@@ -31,7 +31,7 @@ BIN = ROOT / "bin"
 
 # Canonical order in which to present versions (others appended alphabetically).
 ORDER = ["seq", "partition", "stripe", "atomic_counter",
-         "atomic_dynamic", "openmp", "opencl"]
+         "atomic_dynamic", "openmp", "omp_target", "opencl"]
 
 
 def discover_binaries():

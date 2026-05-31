@@ -25,7 +25,7 @@ LIBOMP := $(firstword $(foreach d,/opt/homebrew/opt/libomp /usr/local/opt/libomp
             $(if $(wildcard $(d)/include/omp.h),$(d))))
 OMP_BINS :=
 ifneq ($(LIBOMP),)
-  OMP_BINS := $(BIN)/openmp
+  OMP_BINS := $(BIN)/openmp $(BIN)/omp_target
 endif
 
 # --- OpenCL (optional): macOS framework, or libOpenCL elsewhere -------------
@@ -51,7 +51,8 @@ $(BIN):
 $(PORTABLE_BINS): $(BIN)/%: $(SRC)/%.cpp $(DEPS) | $(BIN)
 	$(CXX) $(CXXFLAGS) $< -o $@
 
-$(BIN)/openmp: $(SRC)/openmp.cpp $(DEPS) | $(BIN)
+# openmp (host work-sharing) and omp_target (device offload) share a recipe.
+$(OMP_BINS): $(BIN)/%: $(SRC)/%.cpp $(DEPS) | $(BIN)
 	$(CXX) $(CXXFLAGS) -Xpreprocessor -fopenmp \
 	    -I$(LIBOMP)/include -L$(LIBOMP)/lib -lomp $< -o $@
 
