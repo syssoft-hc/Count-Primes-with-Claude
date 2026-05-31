@@ -46,8 +46,18 @@ def plot_csv(input_path, output_path, show=False):
     rows = load(input_path)
     versions = [r["version"] for r in rows]
     best_ms = [float(r["best_ms"]) for r in rows]
-    speedup = [float(r["speedup_vs_seq"]) if r["speedup_vs_seq"] not in ("", None)
-               else 0.0 for r in rows]
+
+    # Speedup baseline: the sequential run if it's in this CSV, otherwise the
+    # slowest version present (so a seq-less snapshot still gets a meaningful
+    # "× faster than <slowest>" panel). Computed from best_ms so it does not
+    # depend on the speedup column being filled in.
+    seq_ms = next((float(r["best_ms"]) for r in rows if r["version"] == "seq"), None)
+    if seq_ms:
+        base_ms, base_label = seq_ms, "seq"
+    else:
+        slow_i = max(range(len(best_ms)), key=lambda i: best_ms[i])
+        base_ms, base_label = best_ms[slow_i], versions[slow_i]
+    speedup = [base_ms / m if m else 0.0 for m in best_ms]
 
     N = int(rows[0]["N"])
     threads = rows[0].get("threads", "?")
@@ -73,8 +83,8 @@ def plot_csv(input_path, output_path, show=False):
 
     # --- right: speedup ------------------------------------------------------
     b2 = ax2.bar(versions, speedup, color=colors)
-    ax2.set_ylabel("speedup vs seq  (×)")
-    ax2.set_title("Speedup — higher is better")
+    ax2.set_ylabel(f"speedup vs {base_label}  (×)")
+    ax2.set_title(f"Speedup vs {base_label} — higher is better")
     ax2.bar_label(b2, labels=[f"{v:.2f}×" for v in speedup],
                   padding=3, fontsize=8)
     ax2.axhline(1.0, color="grey", ls="--", lw=1, alpha=0.7)
