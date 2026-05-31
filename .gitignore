@@ -1,5 +1,7 @@
 bin/
 results.csv
 results.png
+sweep.csv
+sweep.png
 __pycache__/
 .DS_Store

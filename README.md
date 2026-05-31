@@ -27,7 +27,7 @@ than small ones — which is exactly what makes **load balancing** interesting.
 |---|---|---|
 | `seq` | sequential baseline | reference for correctness & speedup |
 | `partition` | static **block** split across threads | simple, but **load-imbalanced** (top block is the slowest) |
-| `stripe` | **cyclic** split (`n = t, t+P, t+2P, …`) | interleaving balances the `sqrt(n)` cost |
+| `stripe` | **cyclic** split (`n = t, t+P, t+2P, …`) | interleaving *usually* balances the `sqrt(n)` cost — but watch what stride 2 does (see Thread scaling) |
 | `atomic_counter` | one shared `std::atomic` counter | **contention**: an atomic per *prime* is the wrong granularity |
 | `atomic_dynamic` | atomic **work-stealing** cursor | dynamic scheduling: atomic per *chunk* → balance *and* low contention |
 | `openmp` | `#pragma omp parallel for` (optional) | the high-level equivalent of the hand-rolled versions |
@@ -123,6 +123,58 @@ Things to notice and discuss:
   data parallelism to amortize it. GPUs shine on wide float/SIMD work — not this.
   Swapping in a sieve, or 32-bit candidates, would change the story.
 
+## Thread scaling (`sweep.py`)
+
+Where `run.py` fixes the thread count and varies the version, `sweep.py` fixes
+`N` and varies the **thread count** per version, to show how each approach
+*scales* as cores are added:
+
+```sh
+python3 sweep.py                        # N=10^7, threads 1,2,4,8,12,16
+python3 sweep.py -n 50000000 -p 1,2,4,8,16
+python3 sweep.py --versions stripe atomic_dynamic
+```
+
+It writes `sweep.csv` (one row per version × thread count, with `speedup_self`
+and parallel `efficiency = speedup / threads`) and `sweep.png`, a two-panel line
+plot: speedup vs threads (with an ideal `y = x` line) and efficiency. `seq` (always
+1 thread) and `opencl` (GPU work-items, not threads) are excluded.
+
+### The striping trap — cyclic distribution can collide with the data
+
+The sweep exposes a subtle, important failure of `stripe`. With `P` threads,
+thread `t` handles `n = 2+t, 2+t+P, 2+t+2P, …` — a stride of `P`. When **`P` is
+even, that stride shares the factor 2 with the integers**, so each thread's
+residue class is *entirely even or entirely odd*:
+
+- `P = 2`: thread 0 gets `2,4,6,8,…` (all even → `is_prime` returns in O(1)),
+  thread 1 gets `3,5,7,9,…` (all odd → full `sqrt(n)` trial division). One thread
+  does *all* the real work — **2 threads give ~1× speedup, no gain at all.**
+- `P = 4`: 2 of the 4 residue classes are even (cheap), 2 are odd (expensive) →
+  ~2× instead of 4×. In general only the ~`P/2` odd-residue threads do real work.
+
+Measured efficiency at `N = 10⁷` makes it vivid:
+
+```
+version           1→2 threads   efficiency @ 2t    efficiency @ 16t
+atomic_dynamic       1.95×           0.97               0.71
+openmp               1.95×           0.98               0.71
+partition            1.59×           0.80               0.57
+stripe               1.01×           0.50  (!)          0.45
+atomic_counter       1.01×           0.50  (!)          0.42
+```
+
+`atomic_dynamic` / `openmp` scale near-ideally until the M3 Max's 4 slower
+*efficiency* cores join at 12→16 threads (the visible knee). `stripe` and
+`atomic_counter` (which is also striped) sit at ~0.5 efficiency on even thread
+counts because half their threads are stuck on the trivial even numbers.
+
+**Lessons:** (1) cyclic/striped distribution is only balanced when the stride is
+*coprime to any structure in the work* — here it must avoid the factor 2; a
+stride of an odd `P`, or skipping evens entirely, fixes it. (2) Dynamic
+work-stealing (`atomic_dynamic`, `openmp`) sidesteps the whole problem because it
+never bakes the assignment into a fixed pattern.
+
 ## Adding a new version
 
 1. Add `src/<name>.cpp`, include `common/prime.hpp` + `common/bench.hpp`, and
@@ -139,5 +191,7 @@ common/bench.hpp        arg parsing, timing, uniform JSON/stderr output
 src/*.cpp               one file per approach
 src/prime_kernel.cl     OpenCL mirror of is_prime()
 Makefile                auto-detects OpenMP / OpenCL
-run.py                  runner → results.csv
+run.py                  per-version runner → results.csv (+ --plot)
+plot.py                 bar chart of a results.csv
+sweep.py                thread-scaling sweep → sweep.csv + sweep.png
 ```
