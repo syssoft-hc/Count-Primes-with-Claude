@@ -98,6 +98,22 @@ Two panels share the version axis: best runtime (log scale) and speedup vs
 `seq`; the fastest version is highlighted. A saved snapshot of the 10⁸ run lives
 in `copri_10e8.csv` / `copri_10e8.png`.
 
+## Output files & naming convention
+
+Result files can take a long time to produce, so the runners never overwrite
+each other, and the repo distinguishes throwaway runs from snapshots worth
+keeping by a single character — **hyphen vs. underscore**:
+
+| Form | Example | Produced by | Git |
+|---|---|---|---|
+| **hyphen** = auto-timestamped run | `results-20260531-172143.csv`, `sweep-20260531-172143.png` | the **default** output of `run.py` / `sweep.py` (`results-<YYYYmmdd-HHMMSS>` / `sweep-<…>`); the `.png` inherits the stamp | **ignored** (`*-*.csv/png`) |
+| **underscore** = named snapshot | `copri_10e8.csv`, `sweep_10e8.png` | you, deliberately — via `-o name.csv` or by renaming a timestamped file | **tracked** |
+
+So every run is preserved on disk under its own timestamp, git stays free of
+benchmark clutter, and promoting a run to a permanent, tracked snapshot is just
+a rename with an underscore (or `-o sweep_<label>.csv`). Passing an explicit
+`-o` always uses that exact path — no timestamp is added.
+
 ## Sample results (Apple M3 Max, N = 10⁷)
 
 ```
