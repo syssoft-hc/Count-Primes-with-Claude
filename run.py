@@ -31,7 +31,8 @@ BIN = ROOT / "bin"
 
 # Canonical order in which to present versions (others appended alphabetically).
 ORDER = ["seq", "partition", "stripe", "atomic_counter",
-         "atomic_dynamic", "openmp", "omp_target", "opencl"]
+         "atomic_dynamic", "openmp", "omp_target", "opencl",
+         "sieve_cpu", "sieve_gpu"]
 
 # Mirror of kU32SafeMax in common/prime.hpp: above this, the uint32 path is
 # unsafe, so --width both / 32 skip u32 and fall back to u64.

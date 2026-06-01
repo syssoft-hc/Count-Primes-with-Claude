@@ -37,7 +37,8 @@ ROOT = Path(__file__).resolve().parent
 from run import BIN, run_one, discover_binaries
 
 # Versions whose thread count is meaningfully controllable via argv[2].
-SWEEPABLE = ["partition", "stripe", "atomic_counter", "atomic_dynamic", "openmp"]
+SWEEPABLE = ["partition", "stripe", "atomic_counter", "atomic_dynamic",
+             "openmp", "sieve_cpu"]
 
 
 def parse_threads(spec):

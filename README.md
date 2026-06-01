@@ -39,6 +39,12 @@ The 32- vs 64-bit split matters enormously **on the GPU** — see
 | `openmp` | `#pragma omp parallel for` (optional) | the high-level equivalent of the hand-rolled versions |
 | `omp_target` | `#pragma omp target` GPU **offload** (optional) | the offload programming model — and why it falls back to the CPU here (see note) |
 | `opencl` | GPU, striped grid + host reduction | when offloading to the GPU **does and doesn't** pay off |
+| `sieve_cpu` | parallel **segmented sieve** (std::thread) † | algorithm beats parallelism — ~1000× faster than trial division |
+| `sieve_gpu` | segmented sieve in GPU `__local` memory † | the right algorithm is what finally makes the **GPU win** |
+
+† `sieve_cpu` / `sieve_gpu` deliberately **break the shared-`is_prime()` rule** —
+a sieve marks composites instead of testing each candidate. They are the answer
+to "could the GPU ever win here?" (yes — see [Sieve](#sieve--when-the-gpu-finally-wins)).
 
 All binaries share one CLI and output format:
 
@@ -236,6 +242,50 @@ python3 run.py -n 50000000 -w both     # compare every version at u32 vs u64
 In `-w both` each version is run twice, labelled `<ver>-u32` / `<ver>-u64`, and
 each is compared to the sequential baseline *of the same width*.
 
+## Sieve — when the GPU finally wins
+
+Everything above keeps the same trial-division `is_prime`, so the comparisons are
+fair — but trial division is a *terrible* algorithm, and no amount of parallelism
+fixes that. `sieve_cpu` and `sieve_gpu` break that rule on purpose: they use a
+**segmented Sieve of Eratosthenes**, whose inner loop is `mark[j]=1; j+=2p` — pure
+additions and byte writes, **no division at all**. Two payoffs:
+
+**1. Algorithm beats parallelism.** `sieve_cpu` counts π(10⁷) in ~0.8 ms; the
+trial-division `seq` takes ~624 ms, and even the best parallel trial-division
+version ~55 ms. The algorithm change is ~**1000×** — far more than the ~11× the
+16 cores buy. *Pick the right algorithm before you parallelize.*
+
+**2. The right algorithm is what lets the GPU win.** At N=10⁹ (snapshot
+`results_sieve_10e9.*`):
+
+```
+version       best_ms        note
+-------------------------------------------------------
+openmp        38920    trial division, fastest CPU
+opencl        49807    trial division, GPU
+sieve_cpu        52    segmented sieve, 16 cores
+sieve_gpu        42    segmented sieve, GPU   <- fastest
+```
+
+The sieve is ~**1000×** faster than trial division, and now **`sieve_gpu` beats
+`sieve_cpu`** (~42 vs ~52 ms; with warm best-of-3 runs ~28 vs ~34 ms). This is
+the direct answer to "[would NVIDIA be better / is the Mac GPU weak]" — the GPU
+was never the problem, *trial division* was. Give the GPU a regular,
+division-free, bandwidth-bound kernel and it pulls ahead.
+
+Getting there took one real lesson: a **first** GPU sieve that streamed a 500 MB
+composite array through global memory *lost* to the CPU (155 ms vs 34 ms), because
+on this unified-memory Mac the GPU and CPU share the same RAM — and the CPU sieve
+is **cache-blocked**, so it stays on-chip and barely touches it. The fix was to
+block the GPU sieve the same way: each work-group sieves one segment in fast
+**`__local` (on-chip) memory** instead of global RAM. That on-chip blocking — not
+raw FLOPS — is what makes the GPU competitive on a memory-bound task. (`sieve_gpu`
+still loses at small N, e.g. 10⁸, where its kernel-launch overhead dominates the
+tiny amount of work.)
+
+Both sieves are memory-bound, so the `u32`/`u64` width is irrelevant — they always
+report `u64` and ignore `-w`.
+
 ## Thread scaling (`sweep.py`)
 
 Where `run.py` fixes the thread count and varies the version, `sweep.py` fixes
@@ -307,10 +357,12 @@ never bakes the assignment into a fixed pattern.
 ```
 common/prime.hpp        shared is_prime() — the ONE primality test
 common/bench.hpp        arg parsing, timing, uniform JSON/stderr output
+common/sieve_common.hpp base primes for the sieve versions
 src/*.cpp               one file per approach
-src/prime_kernel.cl     OpenCL mirror of is_prime()
+src/prime_kernel.cl     OpenCL mirror of is_prime() (u32 + u64 kernels)
+src/sieve_kernel.cl     OpenCL segmented sieve (blocked in __local memory)
 Makefile                auto-detects OpenMP / OpenCL
-run.py                  per-version runner → results.csv (+ --plot)
+run.py                  per-version runner → results.csv (+ --plot, -w width)
 plot.py                 bar chart of a results.csv
 sweep.py                thread-scaling sweep → sweep.csv + sweep.png
 ```

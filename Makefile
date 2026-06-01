@@ -14,10 +14,12 @@ CXXFLAGS ?= -std=c++17 -O3 -Wall -Wextra -pthread
 BIN      := bin
 SRC      := src
 COMMON   := common
-DEPS     := $(COMMON)/prime.hpp $(COMMON)/bench.hpp
+DEPS     := $(COMMON)/prime.hpp $(COMMON)/bench.hpp $(COMMON)/sieve_common.hpp
 
 # --- portable versions: C++ standard library + pthreads only ----------------
-PORTABLE      := seq partition stripe atomic_counter atomic_dynamic
+# (sieve_cpu is a segmented Sieve of Eratosthenes -- a different algorithm,
+# clearly labelled; see src/sieve_cpu.cpp.)
+PORTABLE      := seq partition stripe atomic_counter atomic_dynamic sieve_cpu
 PORTABLE_BINS := $(addprefix $(BIN)/,$(PORTABLE))
 
 # --- OpenMP (optional): only if a libomp install (with omp.h) is found ------
@@ -32,12 +34,13 @@ endif
 UNAME := $(shell uname -s)
 OCL_BINS :=
 ifeq ($(UNAME),Darwin)
-  OCL_BINS    := $(BIN)/opencl
+  OCL_BINS    := $(BIN)/opencl $(BIN)/sieve_gpu
   OCL_LDFLAGS := -framework OpenCL
   OCL_CFLAGS  := -Wno-deprecated-declarations
 endif
 
-KERNEL := $(abspath $(SRC)/prime_kernel.cl)
+KERNEL       := $(abspath $(SRC)/prime_kernel.cl)
+SIEVE_KERNEL := $(abspath $(SRC)/sieve_kernel.cl)
 
 ALL_BINS := $(PORTABLE_BINS) $(OMP_BINS) $(OCL_BINS)
 
@@ -58,6 +61,10 @@ $(OMP_BINS): $(BIN)/%: $(SRC)/%.cpp $(DEPS) | $(BIN)
 
 $(BIN)/opencl: $(SRC)/opencl.cpp $(DEPS) $(SRC)/prime_kernel.cl | $(BIN)
 	$(CXX) $(CXXFLAGS) $(OCL_CFLAGS) -DKERNEL_PATH='"$(KERNEL)"' \
+	    $< -o $@ $(OCL_LDFLAGS)
+
+$(BIN)/sieve_gpu: $(SRC)/sieve_gpu.cpp $(DEPS) $(SRC)/sieve_kernel.cl | $(BIN)
+	$(CXX) $(CXXFLAGS) $(OCL_CFLAGS) -DKERNEL_PATH='"$(SIEVE_KERNEL)"' \
 	    $< -o $@ $(OCL_LDFLAGS)
 
 run: all
