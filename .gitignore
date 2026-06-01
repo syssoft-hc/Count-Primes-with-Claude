@@ -9,5 +9,9 @@ sweep.csv
 sweep.png
 sweep-*.csv
 sweep-*.png
+scale.csv
+scale.png
+scale-*.csv
+scale-*.png
 __pycache__/
 .DS_Store
