@@ -281,6 +281,22 @@ the direct answer to "[would NVIDIA be better / is the Mac GPU weak]" — the GP
 was never the problem, *trial division* was. Give the GPU a regular,
 division-free, bandwidth-bound kernel and it pulls ahead.
 
+**The gap only widens with scale.** At N=10¹⁰ (snapshot `results_10e10.*`) the
+contrast becomes absurd — the best parallel trial-division CPU version takes
+**17.5 minutes**, the sieves under **0.4 s**:
+
+```
+version       best_ms        note
+-------------------------------------------------------
+openmp      1052873    trial division (uint64), fastest CPU  (~17.5 min)
+sieve_cpu       396    segmented sieve, 16 cores
+sieve_gpu       350    segmented sieve, GPU   <- fastest, 3012x vs openmp
+```
+
+That is a ~**3000×** algorithm gap — the same π(10¹⁰)=455,052,511 in 17.5 minutes
+or a third of a second, depending only on the algorithm. The GPU sieve keeps its
+~1.13× edge over the CPU sieve here too.
+
 Getting there took one real lesson: a **first** GPU sieve that streamed a 500 MB
 composite array through global memory *lost* to the CPU (155 ms vs 34 ms), because
 on this unified-memory Mac the GPU and CPU share the same RAM — and the CPU sieve
