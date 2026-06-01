@@ -381,6 +381,25 @@ never bakes the assignment into a fixed pattern.
    needs extra flags).
 3. `run.py` discovers it automatically; add it to `ORDER` for a fixed position.
 
+## Snapshots
+
+Tracked result sets (each a `.csv` + a `.png`), kept because they were slow to
+produce and each isolates one lesson. Underscored names are deliberate snapshots
+(timestamped throwaway runs are git-ignored — see the naming convention above).
+
+| Snapshot | N | What it shows |
+|---|---|---|
+| `copri_10e8` | 10⁸ | baseline comparison of all versions (uint64) — `atomic_dynamic`/`openmp` win, GPU loses |
+| `sweep_10e8` | 10⁸ | thread-scaling sweep: speedup & efficiency vs core count, the P/E-core knee, the striping trap |
+| `results_10e7_u32` | 10⁷ | all versions in uint32 — the GPU becomes competitive (10.4×) |
+| `results_10e7_both` | 10⁷ | every version at u32 **and** u64 side by side — CPU a wash, `opencl` swings ~12× |
+| `results_10e9` | 10⁹ | fastest CPU vs GPU, **uint64** — GPU ~19× slower (736 s) |
+| `results_10e9_u32` | 10⁹ | same, **uint32** — GPU gap shrinks to ~1.3× (49.8 s) |
+| `results_sieve_10e9` | 10⁹ | sieve vs trial division — sieve ~1000× faster, `sieve_gpu` overtakes `sieve_cpu` |
+| `results_10e10` | 10¹⁰ | **capstone**: trial-division CPU ~17.5 min vs sieves ~0.35 s (~3000×) |
+
+Re-chart any of them with `python3 plot.py -i <name>.csv -o <name>.png`.
+
 ## Layout
 
 ```
