@@ -34,7 +34,7 @@ endif
 UNAME := $(shell uname -s)
 OCL_BINS :=
 ifeq ($(UNAME),Darwin)
-  OCL_BINS    := $(BIN)/opencl $(BIN)/sieve_gpu
+  OCL_BINS    := $(BIN)/opencl $(BIN)/sieve_gpu $(BIN)/sieve_gpu_barrett
   OCL_LDFLAGS := -framework OpenCL
   OCL_CFLAGS  := -Wno-deprecated-declarations
 endif
@@ -63,7 +63,8 @@ $(BIN)/opencl: $(SRC)/opencl.cpp $(DEPS) $(SRC)/prime_kernel.cl | $(BIN)
 	$(CXX) $(CXXFLAGS) $(OCL_CFLAGS) -DKERNEL_PATH='"$(KERNEL)"' \
 	    $< -o $@ $(OCL_LDFLAGS)
 
-$(BIN)/sieve_gpu: $(SRC)/sieve_gpu.cpp $(DEPS) $(SRC)/sieve_kernel.cl | $(BIN)
+# sieve_gpu (`%`) and sieve_gpu_barrett (Barrett reduction) share the kernel file.
+$(BIN)/sieve_gpu $(BIN)/sieve_gpu_barrett: $(BIN)/%: $(SRC)/%.cpp $(DEPS) $(SRC)/sieve_kernel.cl | $(BIN)
 	$(CXX) $(CXXFLAGS) $(OCL_CFLAGS) -DKERNEL_PATH='"$(SIEVE_KERNEL)"' \
 	    $< -o $@ $(OCL_LDFLAGS)
 

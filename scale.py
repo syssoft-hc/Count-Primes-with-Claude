@@ -66,23 +66,27 @@ def make_plot(rows, exps, versions, output, show):
     ax1.set_title("Runtime vs problem size — lower is better")
     ax1.grid(which="both", ls=":", alpha=0.4); ax1.legend()
 
-    # --- right: GPU-over-CPU speedup vs N -----------------------------------
-    cpu, gpu = by.get("sieve_cpu", {}), by.get("sieve_gpu", {})
-    sx, sy = [], []
-    for n in exps:
-        if n in cpu and n in gpu and gpu[n]["best_ms"]:
-            sx.append(10 ** n)
-            sy.append(cpu[n]["best_ms"] / gpu[n]["best_ms"])
-    if sx:
-        ax2.plot(sx, sy, marker="o", color="#dd8452")
+    # --- right: each GPU version's speedup over the CPU sieve vs N -----------
+    cpu = by.get("sieve_cpu", {})
+    gpu_versions = [v for v in versions if v != "sieve_cpu"]
+    plotted = False
+    for v in gpu_versions:
+        g = by.get(v, {})
+        sx = [10 ** n for n in exps if n in cpu and n in g and g[n]["best_ms"]]
+        sy = [cpu[n]["best_ms"] / g[n]["best_ms"]
+              for n in exps if n in cpu and n in g and g[n]["best_ms"]]
+        if sx:
+            ax2.plot(sx, sy, marker="o", label=v)
+            plotted = True
+    if plotted:
         ax2.axhline(1.0, ls="--", color="grey", lw=1.2, alpha=0.8)
-        ax2.fill_between(sx, 1.0, sy, where=[y >= 1 for y in sy],
-                         color="#dd8452", alpha=0.15)
         ax2.set_xscale("log")
         ax2.set_xlabel("N (upper limit)")
-        ax2.set_ylabel("sieve_gpu speedup over sieve_cpu  (×)")
-        ax2.set_title("GPU vs CPU — above 1.0 the GPU wins")
+        ax2.set_ylabel("speedup over sieve_cpu  (×)")
+        ax2.set_title("GPU vs CPU sieve — above 1.0 the GPU wins")
         ax2.grid(which="both", ls=":", alpha=0.4)
+        if len(gpu_versions) > 1:
+            ax2.legend()
 
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(output, dpi=150)
@@ -153,17 +157,24 @@ def main():
     print("\nall prime counts verified against known pi(10^n)." if ok
           else "\n*** some counts were WRONG (see above) ***")
 
-    # Console table: GPU speedup over CPU per size.
-    cpu = {r["n"]: r["best_ms"] for r in rows if r["version"] == "sieve_cpu"}
-    gpu = {r["n"]: r["best_ms"] for r in rows if r["version"] == "sieve_gpu"}
-    print(f"\n{'N':>8}{'sieve_cpu':>14}{'sieve_gpu':>14}{'gpu/cpu':>10}")
-    print("-" * 46)
+    # Console table: best_ms per version, and each GPU version's speedup over CPU.
+    ms = {v: {r["n"]: r["best_ms"] for r in rows if r["version"] == v} for v in versions}
+    cpu = ms.get("sieve_cpu", {})
+    hdr = f"{'N':>8}" + "".join(f"{v:>20}" for v in versions)
+    if "sieve_cpu" in versions:
+        hdr += "".join(f"{v + '/cpu':>22}" for v in versions if v != "sieve_cpu")
+    print("\n" + hdr)
+    print("-" * len(hdr))
     for n in exps:
-        c, g = cpu.get(n), gpu.get(n)
-        sp = f"{c / g:.2f}x" if c and g else "-"
-        cs = f"{c:.3f}" if c else "-"
-        gs = f"{g:.3f}" if g else "-"
-        print(f"10^{n:<5}{cs:>14}{gs:>14}{sp:>10}")
+        line = f"10^{n:<5}"
+        for v in versions:
+            line += f"{(f'{ms[v][n]:.3f}' if n in ms[v] else '-'):>20}"
+        for v in versions:
+            if v == "sieve_cpu":
+                continue
+            c, g = cpu.get(n), ms[v].get(n)
+            line += f"{(f'{c / g:.2f}x' if c and g else '-'):>22}"
+        print(line)
 
     fields = ["n", "N", "version", "best_ms", "median_ms", "count"]
     with open(args.output, "w", newline="") as f:
