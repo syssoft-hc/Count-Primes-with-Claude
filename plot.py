@@ -25,6 +25,14 @@ ORDER = ["seq", "partition", "stripe", "atomic_counter",
          "atomic_dynamic", "openmp", "omp_target", "opencl"]
 
 
+def base_name(version):
+    """Strip a '-u32'/'-u64' width suffix (added by run.py -w both)."""
+    for suf in ("-u32", "-u64"):
+        if version.endswith(suf):
+            return version[:-len(suf)]
+    return version
+
+
 def load(path):
     with open(path, newline="") as f:
         rows = list(csv.DictReader(f))
@@ -46,18 +54,24 @@ def plot_csv(input_path, output_path, show=False):
     rows = load(input_path)
     versions = [r["version"] for r in rows]
     best_ms = [float(r["best_ms"]) for r in rows]
+    widths = [r.get("width") for r in rows]  # None for pre-width CSVs
 
-    # Speedup baseline: the sequential run if it's in this CSV, otherwise the
-    # slowest version present (so a seq-less snapshot still gets a meaningful
-    # "× faster than <slowest>" panel). Computed from best_ms so it does not
-    # depend on the speedup column being filled in.
-    seq_ms = next((float(r["best_ms"]) for r in rows if r["version"] == "seq"), None)
-    if seq_ms:
-        base_ms, base_label = seq_ms, "seq"
+    # Speedup baseline: the sequential run, matched BY WIDTH so a `-w both` CSV
+    # compares each bar to seq of its own width (u32 vs seq-u32, u64 vs seq-u64).
+    # With no seq row at all, fall back to the slowest version present. Computed
+    # from best_ms so it does not depend on the speedup column.
+    seq_ms_by_w = {w: float(r["best_ms"])
+                   for r, w in zip(rows, widths)
+                   if base_name(r["version"]) == "seq" and r["best_ms"]}
+    if seq_ms_by_w:
+        any_seq = next(iter(seq_ms_by_w.values()))
+        speedup = [seq_ms_by_w.get(w, any_seq) / m if m else 0.0
+                   for m, w in zip(best_ms, widths)]
+        base_label = "seq" if len(seq_ms_by_w) == 1 else "seq (same width)"
     else:
         slow_i = max(range(len(best_ms)), key=lambda i: best_ms[i])
         base_ms, base_label = best_ms[slow_i], versions[slow_i]
-    speedup = [base_ms / m if m else 0.0 for m in best_ms]
+        speedup = [base_ms / m if m else 0.0 for m in best_ms]
 
     N = int(rows[0]["N"])
     threads = rows[0].get("threads", "?")
