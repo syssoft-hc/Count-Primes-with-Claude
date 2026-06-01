@@ -9,6 +9,11 @@ single host** (here: an Apple M3 Max, 16 cores + an integrated GPU).
 > results were found — the wrong turns, the 736-second wall, the recurring
 > villain (64-bit integer division), and the GPU's sweet spot — told in the order
 > it actually happened.
+>
+> 🧭 **Resuming on another machine (e.g. Windows + CUDA)?** Read
+> [`HANDOFF.md`](HANDOFF.md) first — it's the portable project memory and the
+> step-by-step plan for the CUDA port (Claude's `~/.claude` memory doesn't travel
+> with the repo).
 
 The goal is *not* fast primality testing. Every version uses the same naive
 trial division (one template `is_prime_impl<T>` in
