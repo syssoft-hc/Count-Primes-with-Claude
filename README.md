@@ -153,32 +153,39 @@ benchmark clutter, and promoting a run to a permanent, tracked snapshot is just
 a rename with an underscore (or `-o sweep_<label>.csv`). Passing an explicit
 `-o` always uses that exact path — no timestamp is added.
 
-## Sample results (Apple M3 Max, N = 10⁷)
+## Sample results (Apple M3 Max, N = 10⁷, uint32)
+
+`auto` picks uint32 for N = 10⁷, so this is what `python3 run.py -n 10000000`
+prints (snapshot: `results_10e7_u32.*`):
 
 ```
 version              best_ms   median_ms   speedup
 --------------------------------------------------
-seq                  628.055     636.984      1.0x
-partition             67.398      67.985     9.32x
-stripe                84.921      85.157      7.4x
-atomic_counter        93.455      93.581     6.72x
-atomic_dynamic        55.167      55.240    11.38x   <- best
-opencl               707.384     713.371     0.89x   <- slower than 1 CPU core!
+seq                  623.923     625.015      1.0x
+partition             66.665      77.106     9.36x
+stripe                86.924      86.973     7.18x
+atomic_counter        93.493      93.623     6.67x
+atomic_dynamic        55.141      55.645    11.32x   <- best
+openmp                55.363      55.451    11.27x
+omp_target            68.478      70.002     9.11x   (offload falls back to CPU)
+opencl                60.169      62.062    10.37x   (GPU, uint32)
 ```
 
 Things to notice and discuss:
 
-- **`atomic_dynamic` wins.** Dynamic chunk-stealing keeps all 16 cores busy to
-  the very end, while static `partition`/`stripe` leave some cores idle once
-  they finish their share (M3 Max also mixes faster *performance* cores with
-  slower *efficiency* cores, which amplifies static imbalance).
+- **`atomic_dynamic` and `openmp` win.** Dynamic chunk-stealing keeps all 16
+  cores busy to the very end, while static `partition`/`stripe` leave some cores
+  idle once they finish their share (M3 Max also mixes faster *performance* cores
+  with slower *efficiency* cores, which amplifies static imbalance).
 - **`atomic_counter` is slower than `stripe`** even though they do identical
   work — the only difference is a contended atomic increment *per prime* instead
   of a private accumulator reduced once. Synchronization granularity matters.
-- **The GPU loses here**, and that is largely a *64-bit integer* story, not a
-  fundamental GPU limit: trial division is dominated by integer `%`, and the
-  Apple GPU has no native 64-bit divide. Drop to 32-bit and the GPU nearly
-  catches the CPU — see [uint32 vs uint64](#uint32-vs-uint64) below.
+- **The GPU is competitive here (10.37×) — but only in uint32.** The very same
+  `opencl` run in uint64 is ~0.89× (slower than one CPU core), an ~12× swing from
+  the integer width alone: the Apple GPU has no native 64-bit integer divide. So
+  the earlier "GPU loses" result was a *64-bit integer* story, not a GPU limit —
+  see [uint32 vs uint64](#uint32-vs-uint64). For N above 4×10⁹ you must use
+  uint64, and there the GPU does lose.
 
 ## uint32 vs uint64
 
