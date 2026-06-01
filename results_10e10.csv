@@ -1,0 +1,4 @@
+version,N,threads,width,repeats,count,best_ms,median_ms,speedup_vs_seq
+openmp,10000000000,auto,64,1,455052511,1052873.007,1052873.007,
+sieve_cpu,10000000000,auto,64,1,455052511,396.493,396.493,
+sieve_gpu,10000000000,auto,64,1,455052511,349.55,349.55,
