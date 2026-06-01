@@ -327,7 +327,8 @@ sieve_gpu       350    segmented sieve, GPU   <- fastest, 3012x vs openmp
 
 That is a ~**3000×** algorithm gap — the same π(10¹⁰)=455,052,511 in 17.5 minutes
 or a third of a second, depending only on the algorithm. The GPU sieve keeps its
-~1.13× edge over the CPU sieve here too.
+~1.13× edge over the CPU sieve at 10¹⁰ — but *only within a sweet spot*; push N
+higher and it reverses (next section).
 
 Getting there took one real lesson: a **first** GPU sieve that streamed a 500 MB
 composite array through global memory *lost* to the CPU (155 ms vs 34 ms), because
@@ -341,6 +342,47 @@ tiny amount of work.)
 
 Both sieves are memory-bound, so the `u32`/`u64` width is irrelevant — they always
 report `u64` and ignore `-w`.
+
+### The GPU sieve has a sweet spot, not a monotonic win (`scale.py`)
+
+"Bigger N → GPU wins by more" sounds obvious, and is **wrong**. `scale.py` fixes
+the two sieves and varies the *problem size* N = 10ⁿ (snapshot
+`scale_sieve_3-12.*`, n = 3…12):
+
+```sh
+python3 scale.py --exp 3-12       # plots runtime vs N and gpu/cpu speedup vs N
+```
+
+```
+       N    sieve_cpu    sieve_gpu   gpu/cpu
+--------------------------------------------
+10^3        0.16 ms       4.6 ms      0.03x   GPU launch overhead dominates
+10^6        0.18 ms       4.4 ms      0.04x
+10^8        3.2  ms       7.5 ms      0.42x
+10^9        33.4 ms      27.6 ms      1.21x   <- GPU pulls ahead
+10^10      412.9 ms     341.0 ms      1.21x   <- peak
+10^11      5592  ms     7468  ms      0.75x   <- reverses
+10^12     97419  ms    197277  ms      0.49x   CPU ~2x faster
+```
+
+The GPU has an **operating window** (~10⁹–10¹⁰), not a permanent edge:
+
+- **Below ~10⁹** it loses to kernel-launch + dispatch overhead (the CPU sieve is
+  already sub-millisecond at 10⁶).
+- **At ~10⁹–10¹⁰** the segment marking — division-free, bandwidth-bound — dominates,
+  and the GPU's memory bandwidth wins (~1.2×).
+- **Above ~10¹⁰ it reverses.** Each segment's setup needs a `start % p` —
+  a **64-bit division** — for every base prime, and the number of base primes
+  grows as √N (≈78 000 at 10¹²). The Apple GPU has **no native 64-bit integer
+  divide** (the same wall `opencl` hit), and its `__local` segments are capped at
+  32 KB — ~8× smaller than the CPU sieve's 256 KB — so it pays that emulated
+  division ~8× more often. Past ~10¹⁰ that setup cost overtakes the bandwidth win.
+
+So the recurring villain — 64-bit integer division — has the last word even for
+the sieve. The honest takeaway: **a GPU is the right tool inside a window**, set
+by overhead at the bottom and (here) integer-division throughput at the top. A
+*bucket sieve* that carries each prime's offset across segments would remove the
+per-segment division and likely reclaim large N — left as a known next step.
 
 ## Thread scaling (`sweep.py`)
 
@@ -424,6 +466,7 @@ produce and each isolates one lesson. Underscored names are deliberate snapshots
 | `results_10e9_u32` | 10⁹ | same, **uint32** — GPU gap shrinks to ~1.3× (49.8 s) |
 | `results_sieve_10e9` | 10⁹ | sieve vs trial division — sieve ~1000× faster, `sieve_gpu` overtakes `sieve_cpu` |
 | `results_10e10` | 10¹⁰ | **capstone**: trial-division CPU ~17.5 min vs sieves ~0.35 s (~3000×) |
+| `scale_sieve_3-12` | 10³–10¹² | sieve CPU-vs-GPU scaling: the GPU's ~10⁹–10¹⁰ **sweet spot** and the reversal beyond |
 
 Re-chart any of them with `python3 plot.py -i <name>.csv -o <name>.png`.
 
@@ -440,4 +483,5 @@ Makefile                auto-detects OpenMP / OpenCL
 run.py                  per-version runner → results.csv (+ --plot, -w width)
 plot.py                 bar chart of a results.csv
 sweep.py                thread-scaling sweep → sweep.csv + sweep.png
+scale.py                problem-size sweep (N=10^n) → scale.csv + scale.png
 ```
