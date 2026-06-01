@@ -198,6 +198,7 @@ matters on the CPU but is huge on the GPU:
 | **CPU**, 1 thread, N=10⁷ | 622 ms | 624 ms | ~**1.0×** |
 | **GPU** (OpenCL), N=10⁷ | 706 ms | 63 ms | ~**11×** |
 | **GPU** (OpenCL), N=5×10⁷ | 8169 ms | 631 ms | ~**13×** |
+| **GPU** (OpenCL), N=10⁹ | 736 s | 49.8 s | ~**15×** |
 
 Why: Apple's ARM64 CPU cores have a native 64-bit integer divide, so `n % c`
 costs about the same either way. The Apple **GPU has no native 64-bit integer
@@ -206,6 +207,20 @@ instruction gets ~12× cheaper in `uint`. At N=10⁷ that takes OpenCL from ~13�
 *slower* than the fastest CPU version to roughly a **tie** with the 16-core CPU.
 So most of the "GPU loses" result earlier is really "64-bit integer division is
 the wrong tool", not "the GPU is useless".
+
+**At the headline scale (N=10⁹)** the same effect is decisive. Comparing the
+fastest CPU version against the GPU (snapshots `results_10e9.*` vs
+`results_10e9_u32.*`):
+
+| version | uint64 | uint32 |
+|---|---|---|
+| `openmp` (fastest CPU) | 38.2 s | 38.7 s |
+| `atomic_dynamic` | 39.0 s | 38.9 s |
+| `opencl` (GPU) | **736 s** | **49.8 s** |
+
+uint32 makes the GPU ~**14.8×** faster and shrinks its gap to the 16-core CPU
+from ~**19×** slower down to ~**1.3×** — same scale, same code, only the integer
+width changed.
 
 **The trade-off — correctness headroom.** uint32 is only safe while the
 candidate *and* `c*c` stay below 2³². The shared `kU32SafeMax = 4×10⁹` guards
