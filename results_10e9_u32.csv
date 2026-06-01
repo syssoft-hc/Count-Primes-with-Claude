@@ -1,0 +1,4 @@
+version,N,threads,width,repeats,count,best_ms,median_ms,speedup_vs_seq
+atomic_dynamic,1000000000,auto,32,1,50847534,38888.683,38888.683,
+openmp,1000000000,auto,32,1,50847534,38742.721,38742.721,
+opencl,1000000000,auto,32,1,50847534,49824.974,49824.974,
