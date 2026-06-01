@@ -4,6 +4,12 @@ A didactic project: count the primes in `[1, N]` many different ways, all using
 the **same** trivial primality test, to study **how to exploit parallelism on a
 single host** (here: an Apple M3 Max, 16 cores + an integrated GPU).
 
+> 📖 **Want the story instead of the manual?** [**A Random Walk to a
+> Trillion**](A-Random-Walk-to-a-Trillion.md) is a travelogue of how these
+> results were found — the wrong turns, the 736-second wall, the recurring
+> villain (64-bit integer division), and the GPU's sweet spot — told in the order
+> it actually happened.
+
 The goal is *not* fast primality testing. Every version uses the same naive
 trial division (one template `is_prime_impl<T>` in
 [`common/prime.hpp`](common/prime.hpp), mirrored in OpenCL C in
