@@ -185,6 +185,11 @@ version — the algorithm matters far more than the parallelization. At this sma
 N the CPU sieve also beats the GPU sieve (kernel-launch overhead); the GPU sieve
 only pulls ahead at N≈10⁹ (see [Sieve](#sieve--when-the-gpu-finally-wins)).
 
+The gap is most stark at the **N=10¹⁰ capstone** (snapshot `results_10e10.*`):
+the best parallel trial-division CPU version takes **~17.5 minutes**, while
+`sieve_gpu` counts the same π(10¹⁰)=455,052,511 in **~0.35 s** — a ~**3000×**
+algorithm gap. Details in [Sieve](#sieve--when-the-gpu-finally-wins).
+
 Things to notice and discuss:
 
 - **`atomic_dynamic` and `openmp` win.** Dynamic chunk-stealing keeps all 16
