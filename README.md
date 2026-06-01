@@ -74,8 +74,9 @@ OpenMP, GPU offload) compared along the way.
 | `opencl` | GPU, striped grid + host reduction | when offloading to the GPU **does and doesn't** pay off |
 | `sieve_cpu` | parallel **segmented sieve** (std::thread) † | algorithm beats parallelism — ~1000× faster than trial division |
 | `sieve_gpu` | segmented sieve in GPU `__local` memory † | the right algorithm is what finally makes the **GPU win** |
+| `sieve_gpu_barrett` | GPU sieve with **Barrett reduction** † | trade the per-segment 64-bit division for multiplies → GPU keeps winning at large N |
 
-† `sieve_cpu` / `sieve_gpu` deliberately **break the shared-`is_prime()` rule** —
+† `sieve_cpu` / `sieve_gpu` / `sieve_gpu_barrett` deliberately **break the shared-`is_prime()` rule** —
 a sieve marks composites instead of testing each candidate. They are the answer
 to "could the GPU ever win here?" (yes — see [Sieve](#sieve--when-the-gpu-finally-wins)).
 
@@ -384,11 +385,43 @@ The GPU has an **operating window** (~10⁹–10¹⁰), not a permanent edge:
   32 KB — ~8× smaller than the CPU sieve's 256 KB — so it pays that emulated
   division ~8× more often. Past ~10¹⁰ that setup cost overtakes the bandwidth win.
 
-So the recurring villain — 64-bit integer division — has the last word even for
-the sieve. The honest takeaway: **a GPU is the right tool inside a window**, set
-by overhead at the bottom and (here) integer-division throughput at the top. A
-*bucket sieve* that carries each prime's offset across segments would remove the
-per-segment division and likely reclaim large N — left as a known next step.
+So the recurring villain — 64-bit integer division — had the last word even for
+the sieve… until we took it on directly.
+
+### Beating the wall with Barrett reduction (`sieve_gpu_barrett`)
+
+If the wall is the 64-bit `%`, remove it. **Barrett reduction** computes `x % p`
+with two multiplies and a subtract instead of a divide, using a per-prime
+constant `μ = ⌊2⁶⁴/p⌋` precomputed once on the host (where division is cheap):
+
+```c
+ulong q = mul_hi(x, mu);   // ≈ x / p
+ulong r = x - q * p;       // x mod p, off by ≤ ~2p
+while (r >= p) r -= p;     // ≤ 2 corrections
+```
+
+`sieve_gpu_barrett` is `sieve_gpu` with exactly that swap — same grid-strided,
+`__local`-blocked structure, no division. The reversal disappears (snapshot
+`results_m3max/scale_sieve_barrett_3-12.*`):
+
+```
+        N    sieve_cpu   sieve_gpu   sieve_gpu_barrett   barrett/cpu
+------------------------------------------------------------------------
+ 10^9        34.6 ms      39.0 ms          29.7 ms          1.17x
+ 10^10      397.7 ms     357.7 ms         214.8 ms          1.85x
+ 10^11      5556  ms     7485  ms         2732  ms          2.03x
+ 10^12     97744  ms   196919  ms        56467  ms          1.73x
+```
+
+Where the plain GPU sieve fell to 0.50× at 10¹², Barrett *grows* its lead to
+~2× and holds it — the GPU now beats the 16-core CPU across the whole large-N
+range (it counts π(10¹²)=37,607,912,018 in **56 s vs the CPU's 98 s**). The
+honest takeaway updates: a GPU is the right tool inside a window — and you can
+*widen that window* by trading its weakness (division) for its strength
+(multiplication), the same `mul_hi`-for-`%` trick that uint32 used on trial
+division. (A bucket sieve — carrying each prime's offset across segments to drop
+the per-segment work entirely — would matter only far past 10¹²; Barrett made it
+unnecessary here.)
 
 ## Thread scaling (`sweep.py`)
 
@@ -478,6 +511,7 @@ machine, collect *its* results into a sibling directory named for it
 | `results_m3max/results_sieve_10e9` | 10⁹ | sieve vs trial division — sieve ~1000× faster, `sieve_gpu` overtakes `sieve_cpu` |
 | `results_m3max/results_10e10` | 10¹⁰ | **capstone**: trial-division CPU ~17.5 min vs sieves ~0.35 s (~3000×) |
 | `results_m3max/scale_sieve_3-12` | 10³–10¹² | sieve CPU-vs-GPU scaling: the GPU's ~10⁹–10¹⁰ **sweet spot** and the reversal beyond |
+| `results_m3max/scale_sieve_barrett_3-12` | 10³–10¹² | adds `sieve_gpu_barrett`: Barrett reduction kills the reversal, GPU lead grows to ~2× at 10¹¹–10¹² |
 
 Re-chart any of them with
 `python3 plot.py -i results_m3max/<name>.csv -o results_m3max/<name>.png`.

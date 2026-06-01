@@ -4,7 +4,8 @@
 > *The plan was simple: count the primes up to some limit, but do it in many
 > parallel ways and see what's fastest. What actually happened was a two-week-feeling
 > afternoon of wrong turns, humiliations, one genuine revelation, and a villain who
-> kept coming back. This is the trip report — told in the order it happened, not the
+> kept coming back — until, on the last leg, we finally cornered it. This is the
+> trip report — told in the order it happened, not the
 > order a textbook would choose. It was Brownian motion in a solution space, and the
 > only force pushing us around was curiosity.*
 
@@ -201,18 +202,63 @@ page.
 
 ---
 
-## Why the road continues: the bucket sieve
+## Leg 8 — Slaying the villain with Barrett reduction
 
-We're stopping here *on purpose*, with the map marking exactly where to go next.
-The reversal isn't fundamental — it's an artifact of *re-deriving* each prime's
-offset with a division in every segment. A **bucket sieve** carries each prime's
-offset *across* segments (`offset += advance`, no division), eliminating the
-per-segment `%` entirely. If we can fit that pattern onto independent GPU
-work-groups, the GPU should reclaim the 10¹¹–10¹² regime it just lost.
+We had marked the next destination as a *bucket sieve* — a clever data structure
+that visits each prime only in the segments where it actually has a multiple,
+sidestepping the per-segment division. But staring at the map, we realised the
+bucket sieve fights the GPU's grain (it wants sequential segments and atomic
+lists), and that it was attacking a *symptom*. The disease was the same villain
+we'd named twice already: **64-bit division.**
 
-That's the next leg — chosen not by a grand plan, but because the data drew an
-arrow at it. The whole trip was like that: every destination was picked by whatever
-the last measurement made us curious about.
+So we attacked the disease. **Barrett reduction** computes `x % p` with two
+multiplies and a subtract instead of a divide — you precompute `μ = ⌊2⁶⁴/p⌋` once
+per prime on the host (where division is cheap), then on the GPU:
+
+```c
+ulong q = mul_hi(x, mu);   // ≈ x / p, one multiply
+ulong r = x - q * p;       // x mod p, off by ≤ ~2p
+while (r >= p) r -= p;      // ≤ 2 fix-ups
+```
+
+One swap in the kernel — the divide became multiplies — and nothing else changed.
+The reversal *vanished*:
+
+![Three sieves across N = 10³…10¹² — Barrett keeps the GPU ahead](results_m3max/scale_sieve_barrett_3-12.png)
+
+| N | sieve_cpu | sieve_gpu (old) | sieve_gpu_barrett |
+|---|---|---|---|
+| 10¹⁰ | 397 ms | 358 ms | **215 ms** (1.85×) |
+| 10¹¹ | 5556 ms | 7485 ms *(lost)* | **2732 ms** (2.03×) |
+| 10¹² | 97.7 s | 196.9 s *(lost, 0.5×)* | **56.5 s** (1.73×) |
+
+Where the plain GPU sieve cratered to half the CPU's speed at 10¹², Barrett *grew*
+its lead to ~2× and held it. The orange line in the right panel crosses 1.0 around
+10⁹ and never looks back. The GPU counts all **37,607,912,018** primes below a
+trillion in **56 seconds** — beating the 16-core CPU outright — by refusing, one
+last time, to do a single 64-bit division.
+
+So the villain didn't get the last word after all. The whole trip had been one
+long argument with integer division, and it ended the way it should: not by
+buying a bigger GPU, not by a heroic data structure, but by *playing to the
+hardware's strength* — turning the operation it hates (divide) into the one it
+loves (multiply). The same `mul_hi`-for-`%` trick that rescued trial division
+with uint32 closed the book on the sieve.
+
+---
+
+## Epilogue
+
+We came to learn how to parallelize one tiny algorithm and ended up with a field
+guide to a single laptop's soul: dynamic scheduling beats static; strides must be
+coprime to your data; unified memory rewards staying on-chip; algorithm dwarfs
+parallelism; and, above all, *know the one thing your hardware is bad at and
+route around it*. For this GPU that one thing had a name we kept rediscovering —
+64-bit integer division — and the journey was really the slow, curious,
+measurement-by-measurement business of learning to stop asking it.
+
+The map still has an unexplored road (a true bucket sieve, for when someone pushes
+far past 10¹²). But that's a trip for another day. This one is done.
 
 ---
 
@@ -227,12 +273,14 @@ the last measurement made us curious about.
 7. **Unified memory rewards on-chip blocking** — the GPU only won once it stopped streaming RAM.
 8. **GPUs have an operating window**, not a monotonic advantage — bounded by overhead below and integer-division throughput above.
 9. **The recurring villain** — 64-bit integer division explained almost every disappointment on the trip.
+10. **Route around the weakness** — Barrett reduction turned the GPU's hated divide into multiplies and widened the window into a durable ~2× win to 10¹².
 
 ## Souvenirs (kept snapshots)
 
 `results_m3max/copri_10e8` · `results_m3max/sweep_10e8` · `results_m3max/results_10e7_u32` · `results_m3max/results_10e7_both` ·
 `results_m3max/results_10e9` · `results_m3max/results_10e9_u32` · `results_m3max/results_sieve_10e9` · `results_m3max/results_10e10` ·
-`results_m3max/scale_sieve_3-12` — each a `.csv` + `.png`, each a place we stood and measured.
+`results_m3max/scale_sieve_3-12` · `results_m3max/scale_sieve_barrett_3-12` — each a `.csv` + `.png`, each a place we stood and measured.
 
-*Largest number reached: 10¹². Primes counted there: 37,607,912,018. Lines of GPU
-code that mattered most: the ones that moved the working set on-chip.*
+*Largest number reached: 10¹². Primes counted there: 37,607,912,018, in 56 seconds
+on the GPU. Lines of GPU code that mattered most: the ones that moved the working
+set on-chip — and the three that turned a divide into a multiply.*
