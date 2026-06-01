@@ -171,11 +171,19 @@ seq                  623.923     625.015      1.0x
 partition             66.665      77.106     9.36x
 stripe                86.924      86.973     7.18x
 atomic_counter        93.493      93.623     6.67x
-atomic_dynamic        55.141      55.645    11.32x   <- best
+atomic_dynamic        55.141      55.645    11.32x   <- best trial-division
 openmp                55.363      55.451    11.27x
 omp_target            68.478      70.002     9.11x   (offload falls back to CPU)
 opencl                60.169      62.062    10.37x   (GPU, uint32)
+···················· different algorithm: segmented sieve (see "Sieve" below) ····
+sieve_cpu              0.554       0.594     1126x   <- fastest overall
+sieve_gpu              5.282       5.547      118x   (GPU; loses to sieve_cpu at this small N)
 ```
+
+Note the scale break: the sieves are ~100–1000× faster than *any* trial-division
+version — the algorithm matters far more than the parallelization. At this small
+N the CPU sieve also beats the GPU sieve (kernel-launch overhead); the GPU sieve
+only pulls ahead at N≈10⁹ (see [Sieve](#sieve--when-the-gpu-finally-wins)).
 
 Things to notice and discuss:
 
