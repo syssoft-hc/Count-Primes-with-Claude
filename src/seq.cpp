@@ -10,10 +10,11 @@ int main(int argc, char** argv) {
     Args a = parse_args(argc, argv);
     a.threads = 1;  // by definition
 
+    const Width w = a.width;
     return run_and_report("seq", a, [&] {
         uint64_t count = 0;
         for (uint64_t n = 2; n <= a.N; ++n)
-            if (is_prime(n)) ++count;
+            if (is_prime_w(n, w)) ++count;
         return count;
     });
 }

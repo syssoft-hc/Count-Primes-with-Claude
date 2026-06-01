@@ -17,12 +17,13 @@ int main(int argc, char** argv) {
     Args a = parse_args(argc, argv);
     omp_set_num_threads((int)a.threads);
 
+    const Width w = a.width;
     return run_and_report("openmp", a, [&] {
         uint64_t count = 0;
         const long long N = (long long)a.N;  // OpenMP wants a signed loop var
         #pragma omp parallel for schedule(dynamic, 4096) reduction(+ : count)
         for (long long n = 2; n <= N; ++n)
-            if (is_prime((uint64_t)n)) ++count;
+            if (is_prime_w((uint64_t)n, w)) ++count;
         return count;
     });
 }

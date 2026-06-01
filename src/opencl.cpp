@@ -84,7 +84,11 @@ int main(int argc, char** argv) {
         fprintf(stderr, "kernel build failed:\n%s\n", log.data());
         std::exit(1);
     }
-    cl_kernel kernel = clCreateKernel(program, "count_primes", &err);
+    // Pick the kernel matching the resolved width. The 32-bit kernel is far
+    // faster on the Apple GPU (no native 64-bit integer divide).
+    const bool u32 = (a.width == Width::U32);
+    cl_kernel kernel = clCreateKernel(program,
+                                      u32 ? "count_primes_u32" : "count_primes_u64", &err);
     CL_CHECK(err);
 
     // Global work size: how many GPU work-items split the [2, N] range. Capped
@@ -99,9 +103,16 @@ int main(int argc, char** argv) {
                                         sizeof(cl_ulong) * G, nullptr, &err);
     CL_CHECK(err);
 
-    cl_ulong N = a.N;
-    CL_CHECK(clSetKernelArg(kernel, 0, sizeof(cl_ulong), &N));
-    CL_CHECK(clSetKernelArg(kernel, 1, sizeof(cl_ulong), &G));
+    // Scalar args differ in width between the two kernels.
+    if (u32) {
+        cl_uint Nu = (cl_uint)a.N, Gu = (cl_uint)G;
+        CL_CHECK(clSetKernelArg(kernel, 0, sizeof(cl_uint), &Nu));
+        CL_CHECK(clSetKernelArg(kernel, 1, sizeof(cl_uint), &Gu));
+    } else {
+        cl_ulong Nl = a.N, Gl = G;
+        CL_CHECK(clSetKernelArg(kernel, 0, sizeof(cl_ulong), &Nl));
+        CL_CHECK(clSetKernelArg(kernel, 1, sizeof(cl_ulong), &Gl));
+    }
     CL_CHECK(clSetKernelArg(kernel, 2, sizeof(cl_mem), &partial_buf));
 
     std::vector<cl_ulong> partial(G);

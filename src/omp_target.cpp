@@ -44,13 +44,18 @@ int main(int argc, char** argv) {
     // is still a meaningful CPU measurement; on a real device this is ignored.
     if (!offloaded) omp_set_num_threads((int)a.threads);
 
+    const int w32 = (a.width == Width::U32) ? 1 : 0;
     return run_and_report("omp_target", a, [&] {
         uint64_t count = 0;
         const long long N = (long long)a.N;
+        // is_prime_uint32/64 are device-available (prime.hpp is included inside
+        // a declare target region below); pick per-candidate via the mapped flag.
         #pragma omp target teams distribute parallel for \
-            reduction(+ : count) map(tofrom : count)
-        for (long long n = 2; n <= N; ++n)
-            if (is_prime((uint64_t)n)) ++count;
+            reduction(+ : count) map(tofrom : count) firstprivate(w32)
+        for (long long n = 2; n <= N; ++n) {
+            bool p = w32 ? is_prime_uint32((uint32_t)n) : is_prime_uint64((uint64_t)n);
+            if (p) ++count;
+        }
         return count;
     });
 }

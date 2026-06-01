@@ -20,15 +20,16 @@ int main(int argc, char** argv) {
         const unsigned P = a.threads;
         const uint64_t lo = 2, hi = a.N;
 
+        const Width w = a.width;
         std::vector<uint64_t> partial(P, 0);
         std::vector<std::thread> pool;
         pool.reserve(P);
 
         for (unsigned t = 0; t < P; ++t) {
-            pool.emplace_back([&partial, hi, P, t] {
+            pool.emplace_back([&partial, hi, P, t, w] {
                 uint64_t c = 0;
                 for (uint64_t n = lo + t; n <= hi; n += P)
-                    if (is_prime(n)) ++c;
+                    if (is_prime_w(n, w)) ++c;
                 partial[t] = c;
             });
         }

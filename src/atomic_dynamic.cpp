@@ -28,20 +28,21 @@ int main(int argc, char** argv) {
         const uint64_t lo = 2, hi = a.N;
         const uint64_t CHUNK = 4096;  // candidates claimed per atomic op
 
+        const Width w = a.width;
         std::atomic<uint64_t> cursor{lo};
         std::vector<uint64_t> partial(P, 0);
         std::vector<std::thread> pool;
         pool.reserve(P);
 
         for (unsigned t = 0; t < P; ++t) {
-            pool.emplace_back([&cursor, &partial, hi, t] {
+            pool.emplace_back([&cursor, &partial, hi, t, w] {
                 uint64_t c = 0;
                 for (;;) {
                     const uint64_t base = cursor.fetch_add(CHUNK, std::memory_order_relaxed);
                     if (base > hi) break;
                     const uint64_t end = (base + CHUNK <= hi + 1) ? base + CHUNK : hi + 1;
                     for (uint64_t n = base; n < end; ++n)
-                        if (is_prime(n)) ++c;
+                        if (is_prime_w(n, w)) ++c;
                 }
                 partial[t] = c;
             });

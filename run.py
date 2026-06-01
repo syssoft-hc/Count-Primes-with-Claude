@@ -33,6 +33,10 @@ BIN = ROOT / "bin"
 ORDER = ["seq", "partition", "stripe", "atomic_counter",
          "atomic_dynamic", "openmp", "omp_target", "opencl"]
 
+# Mirror of kU32SafeMax in common/prime.hpp: above this, the uint32 path is
+# unsafe, so --width both / 32 skip u32 and fall back to u64.
+U32_SAFE_MAX = 4_000_000_000
+
 
 def discover_binaries():
     if not BIN.is_dir():
@@ -44,12 +48,18 @@ def discover_binaries():
     return ordered
 
 
-def run_one(name, n, threads, repeats):
-    """Run bin/<name> `repeats` times; return (count, [times_ms]) or None."""
+def run_one(name, n, threads, repeats, width="auto"):
+    """Run bin/<name> `repeats` times.
+
+    Returns (count, [times_ms], width_bits) or None. `width` is one of
+    "auto"/"u32"/"u64" and is passed through to the binary.
+    """
     cmd = [str(BIN / name), str(n)]
     if threads:
         cmd.append(str(threads))
-    times, count = [], None
+    if width and width != "auto":
+        cmd.append(width)
+    times, count, wbits = [], None, None
     for _ in range(repeats):
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -64,7 +74,8 @@ def run_one(name, n, threads, repeats):
         rec = json.loads(line)
         times.append(rec["time_ms"])
         count = rec["count"]
-    return count, times
+        wbits = rec.get("width")
+    return count, times, wbits
 
 
 def main():
@@ -89,6 +100,11 @@ def main():
                     metavar="PNG",
                     help="after benchmarking, render a bar chart. Optionally "
                          "give a path (default: results.png next to the CSV).")
+    ap.add_argument("-w", "--width", choices=["auto", "32", "64", "both"],
+                    default="auto",
+                    help="integer width for is_prime: auto picks by N (u32 if "
+                         "N<=4e9, else u64); both runs each version at u32 AND "
+                         "u64 (labelled <ver>-u32 / -u64).")
     args = ap.parse_args()
 
     # Timestamp the default output so long runs are never clobbered. An explicit
@@ -114,21 +130,41 @@ def main():
         print("no binaries to run (did the build produce bin/?)", file=sys.stderr)
         return 1
 
+    # Build the (label, base_version, width_arg) jobs. In "both" mode each
+    # version runs twice (u32 only if N is within the safe range).
+    def jobs_for(v):
+        if args.width == "both":
+            js = []
+            if args.limit <= U32_SAFE_MAX:
+                js.append((f"{v}-u32", v, "u32"))
+            js.append((f"{v}-u64", v, "u64"))
+            return js
+        warg = {"auto": "auto", "32": "u32", "64": "u64"}[args.width]
+        return [(v, v, warg)]
+
+    if args.width in ("32", "both") and args.limit > U32_SAFE_MAX:
+        print(f"note: N>{U32_SAFE_MAX:,} exceeds the uint32 safe limit; "
+              f"u32 runs are skipped (would be unsafe).", file=sys.stderr)
+
+    jobs = [j for v in versions for j in jobs_for(v)]
+
     print(f"\nN = {args.limit:,}   repeats = {args.repeats}   "
-          f"threads = {args.threads or 'auto'}")
-    print(f"versions: {', '.join(versions)}\n")
+          f"threads = {args.threads or 'auto'}   width = {args.width}")
+    print(f"runs: {', '.join(label for label, _, _ in jobs)}\n")
 
     results = []
-    for v in versions:
-        print(f"running {v} ...", flush=True)
-        out = run_one(v, args.limit, args.threads, args.repeats)
+    for label, base, warg in jobs:
+        print(f"running {label} ...", flush=True)
+        out = run_one(base, args.limit, args.threads, args.repeats, warg)
         if out is None:
             continue
-        count, times = out
+        count, times, wbits = out
         results.append({
-            "version": v,
+            "version": label,
+            "base": base,
             "N": args.limit,
             "threads": args.threads or "auto",
+            "width": wbits,
             "repeats": len(times),
             "count": count,
             "best_ms": round(min(times), 3),
@@ -139,35 +175,37 @@ def main():
         print("no successful runs", file=sys.stderr)
         return 1
 
-    # Correctness check: every version must agree on the prime count.
+    # Correctness check: every run must agree on the prime count.
     counts = {r["version"]: r["count"] for r in results}
     if len(set(counts.values())) > 1:
-        print("\n*** WARNING: prime counts DISAGREE across versions ***")
+        print("\n*** WARNING: prime counts DISAGREE across runs ***")
         for ver, c in counts.items():
             print(f"    {ver}: {c}")
     else:
-        print(f"\nall versions agree: {next(iter(counts.values())):,} primes <= {args.limit:,}")
+        print(f"\nall runs agree: {next(iter(counts.values())):,} primes <= {args.limit:,}")
 
-    # Speedup relative to the sequential baseline (if present).
-    base = next((r["best_ms"] for r in results if r["version"] == "seq"), None)
+    # Speedup vs the sequential baseline of the SAME width (so u32 is compared to
+    # seq-u32 and u64 to seq-u64).
+    seq_by_width = {r["width"]: r["best_ms"] for r in results if r["base"] == "seq"}
     for r in results:
-        r["speedup_vs_seq"] = round(base / r["best_ms"], 2) if base else ""
+        b = seq_by_width.get(r["width"])
+        r["speedup_vs_seq"] = round(b / r["best_ms"], 2) if b else ""
 
     # Pretty table.
     print()
-    hdr = f"{'version':<16}{'best_ms':>12}{'median_ms':>12}{'speedup':>10}"
+    hdr = f"{'version':<18}{'width':>6}{'best_ms':>12}{'median_ms':>12}{'speedup':>10}"
     print(hdr)
     print("-" * len(hdr))
     for r in results:
         sp = f"{r['speedup_vs_seq']}x" if r["speedup_vs_seq"] != "" else "-"
-        print(f"{r['version']:<16}{r['best_ms']:>12.3f}"
+        print(f"{r['version']:<18}{('u'+str(r['width'])):>6}{r['best_ms']:>12.3f}"
               f"{r['median_ms']:>12.3f}{sp:>10}")
 
     # CSV.
-    fields = ["version", "N", "threads", "repeats", "count",
+    fields = ["version", "N", "threads", "width", "repeats", "count",
               "best_ms", "median_ms", "speedup_vs_seq"]
     with open(args.output, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fields)
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
         w.writerows(results)
     print(f"\nwrote {args.output}")

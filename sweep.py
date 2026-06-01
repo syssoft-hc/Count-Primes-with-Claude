@@ -159,7 +159,7 @@ def main():
             out = run_one(v, args.limit, t, args.repeats)
             if out is None:
                 continue
-            count, times = out
+            count, times, _ = out
             best = round(min(times), 3)
             if baseline is None:
                 baseline = best  # first (smallest) thread count = self-baseline

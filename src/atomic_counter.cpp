@@ -24,14 +24,15 @@ int main(int argc, char** argv) {
         const unsigned P = a.threads;
         const uint64_t lo = 2, hi = a.N;
 
+        const Width w = a.width;
         std::atomic<uint64_t> count{0};
         std::vector<std::thread> pool;
         pool.reserve(P);
 
         for (unsigned t = 0; t < P; ++t) {
-            pool.emplace_back([&count, hi, P, t] {
+            pool.emplace_back([&count, hi, P, t, w] {
                 for (uint64_t n = lo + t; n <= hi; n += P)
-                    if (is_prime(n))
+                    if (is_prime_w(n, w))
                         // Hot, contended increment on a shared cache line.
                         count.fetch_add(1, std::memory_order_relaxed);
                 // The cheap alternative would be:

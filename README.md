@@ -5,21 +5,27 @@ the **same** trivial primality test, to study **how to exploit parallelism on a
 single host** (here: an Apple M3 Max, 16 cores + an integrated GPU).
 
 The goal is *not* fast primality testing. Every version uses the same naive
-trial division (`is_prime` in [`common/prime.hpp`](common/prime.hpp), mirrored
-in OpenCL C in [`src/prime_kernel.cl`](src/prime_kernel.cl)):
+trial division (one template `is_prime_impl<T>` in
+[`common/prime.hpp`](common/prime.hpp), mirrored in OpenCL C in
+[`src/prime_kernel.cl`](src/prime_kernel.cl)), exposed at two fixed widths:
 
 ```cpp
-bool is_prime(uint64_t n) {
+template <typename T>
+bool is_prime_impl(T n) {
     if (n < 2) return false;
     if (n % 2 == 0) return n == 2;
-    for (uint64_t c = 3; c * c <= n; c += 2)   // odd divisors up to sqrt(n)
+    for (T c = 3; c * c <= n; c += 2)          // odd divisors up to sqrt(n)
         if (n % c == 0) return false;
     return true;
 }
+bool is_prime_uint32(uint32_t n) { return is_prime_impl<uint32_t>(n); }
+bool is_prime_uint64(uint64_t n) { return is_prime_impl<uint64_t>(n); }
 ```
 
 Because `is_prime(n)` costs ~`sqrt(n)`, large candidates are far more expensive
 than small ones — which is exactly what makes **load balancing** interesting.
+The 32- vs 64-bit split matters enormously **on the GPU** — see
+[uint32 vs uint64](#uint32-vs-uint64).
 
 ## Versions
 
@@ -37,8 +43,12 @@ than small ones — which is exactly what makes **load balancing** interesting.
 All binaries share one CLI and output format:
 
 ```
-./bin/<version> <N> [threads]
+./bin/<version> <N> [threads] [u32|u64|auto]
 ```
+
+The optional width token (`auto` is the default) picks the integer type for
+`is_prime`: `auto` uses u32 when `N` ≤ 4×10⁹ and u64 above it. The tokens may
+appear in any order (a bare number is the thread count).
 
 They print one JSON line to **stdout** (consumed by `run.py`) and a human
 summary to **stderr**:
@@ -97,6 +107,8 @@ python3 run.py --only seq stripe
 python3 run.py --no-build       # use whatever is already in bin/
 python3 run.py --plot           # also render a bar chart (results.png)
 python3 run.py --plot chart.png # ... to a chosen path
+python3 run.py -w 32            # force uint32 (auto/32/64/both)
+python3 run.py -w both          # run every version at u32 AND u64
 ```
 
 `run.py` builds (`make`), runs each version, **verifies every version agrees on
@@ -105,9 +117,9 @@ the prime count**, prints a table, and writes a timestamped CSV
 Pass `-o name.csv` to choose the path explicitly. Example contents:
 
 ```
-version,N,threads,repeats,count,best_ms,median_ms,speedup_vs_seq
-seq,10000000,auto,2,664579,628.055,636.984,1.0
-partition,10000000,auto,2,664579,67.398,67.985,9.32
+version,N,threads,width,repeats,count,best_ms,median_ms,speedup_vs_seq
+seq,10000000,auto,64,2,664579,628.055,636.984,1.0
+partition,10000000,auto,64,2,664579,67.398,67.985,9.32
 ...
 ```
 
@@ -163,10 +175,44 @@ Things to notice and discuss:
 - **`atomic_counter` is slower than `stripe`** even though they do identical
   work — the only difference is a contended atomic increment *per prime* instead
   of a private accumulator reduced once. Synchronization granularity matters.
-- **The GPU loses here**, and that is the point: trial division is dominated by
-  64-bit integer `%` (division), which GPUs execute very slowly, and there is no
-  data parallelism to amortize it. GPUs shine on wide float/SIMD work — not this.
-  Swapping in a sieve, or 32-bit candidates, would change the story.
+- **The GPU loses here**, and that is largely a *64-bit integer* story, not a
+  fundamental GPU limit: trial division is dominated by integer `%`, and the
+  Apple GPU has no native 64-bit divide. Drop to 32-bit and the GPU nearly
+  catches the CPU — see [uint32 vs uint64](#uint32-vs-uint64) below.
+
+## uint32 vs uint64
+
+Every version can run with a 32- or 64-bit `is_prime` (the `auto`/`u32`/`u64`
+token, or `run.py -w`). Same algorithm, only the integer width differs. It barely
+matters on the CPU but is huge on the GPU:
+
+| | uint64 | uint32 | u32 speedup |
+|---|---|---|---|
+| **CPU**, 1 thread, N=10⁷ | 622 ms | 624 ms | ~**1.0×** |
+| **GPU** (OpenCL), N=10⁷ | 706 ms | 63 ms | ~**11×** |
+| **GPU** (OpenCL), N=5×10⁷ | 8169 ms | 631 ms | ~**13×** |
+
+Why: Apple's ARM64 CPU cores have a native 64-bit integer divide, so `n % c`
+costs about the same either way. The Apple **GPU has no native 64-bit integer
+divide** — `ulong % ulong` is emulated from many 32-bit ops — so the hot
+instruction gets ~12× cheaper in `uint`. At N=10⁷ that takes OpenCL from ~13×
+*slower* than the fastest CPU version to roughly a **tie** with the 16-core CPU.
+So most of the "GPU loses" result earlier is really "64-bit integer division is
+the wrong tool", not "the GPU is useless".
+
+**The trade-off — correctness headroom.** uint32 is only safe while the
+candidate *and* `c*c` stay below 2³². The shared `kU32SafeMax = 4×10⁹` guards
+this: `auto` (and `run.py`) use u32 up to 4×10⁹ and switch to u64 above it, and
+forcing `u32` on a larger `N` warns and falls back to u64. That is exactly the
+">10⁹ in very rare cases" path — it keeps working, just without the GPU's 32-bit
+speedup.
+
+```sh
+python3 run.py -n 50000000 -w both     # compare every version at u32 vs u64
+```
+
+In `-w both` each version is run twice, labelled `<ver>-u32` / `<ver>-u64`, and
+each is compared to the sequential baseline *of the same width*.
 
 ## Thread scaling (`sweep.py`)
 
