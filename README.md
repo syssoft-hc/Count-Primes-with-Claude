@@ -27,6 +27,33 @@ than small ones — which is exactly what makes **load balancing** interesting.
 The 32- vs 64-bit split matters enormously **on the GPU** — see
 [uint32 vs uint64](#uint32-vs-uint64).
 
+## Results at a glance
+
+Counting the primes ≤ 10⁹ (π = 50,847,534) on an Apple M3 Max — the same problem,
+five ways:
+
+| version | approach | time | vs `openmp` |
+|---|---|---|---|
+| `openmp` | best parallel **trial division**, CPU (16 cores) | ~38 s | 1× |
+| `opencl` *(uint64)* | trial division, **GPU** | ~736 s | **0.05×** |
+| `opencl` *(uint32)* | trial division, GPU | ~50 s | 0.76× |
+| `sieve_cpu` | **segmented sieve**, CPU | ~0.05 s | **~730×** |
+| `sieve_gpu` | segmented sieve, GPU | ~0.04 s | **~910×** |
+
+Two effects dwarf the ~11× that 16 cores buy over one:
+
+- **Integer width swings the GPU ~12×** — the Apple GPU has no native 64-bit
+  integer divide, so uint64 trial division is catastrophic but uint32 is fine
+  ([details](#uint32-vs-uint64)).
+- **Algorithm swings *everything* ~1000×** — a Sieve of Eratosthenes has no
+  division in its inner loop, and on-chip blocking even lets the GPU win
+  ([details](#sieve--when-the-gpu-finally-wins)). At 10¹⁰ the gap reaches ~3000×
+  (17.5 min vs 0.35 s).
+
+The rest of this README is how each of those numbers comes about, and the
+parallelization patterns (partitioning, striping, atomics, dynamic scheduling,
+OpenMP, GPU offload) compared along the way.
+
 ## Versions
 
 | Binary | Technique | What it teaches |
