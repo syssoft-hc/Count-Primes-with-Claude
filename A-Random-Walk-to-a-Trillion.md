@@ -54,7 +54,7 @@ wrong about *why*, and it would take us hours to find out.)
 Curiosity: *how does each strategy scale as we add cores?* So we built a sweep that
 fixes N and varies the thread count, and it handed us the first real surprise.
 
-![Thread scaling at N=10⁸](sweep_10e8.png)
+![Thread scaling at N=10⁸](results_m3max/sweep_10e8.png)
 
 The dynamic schedulers tracked the ideal line beautifully (~0.9 efficiency) until
 the M3's four efficiency cores joined at 12→16 threads — the visible knee. But
@@ -81,7 +81,7 @@ it announce its own fallback honestly, and walked on.
 We pointed everything at **N=10⁹** (π = 50,847,534). The fastest CPU version
 finished in **~38 seconds**. The GPU?
 
-![Fastest CPU vs OpenCL at N=10⁹ (uint64)](results_10e9.png)
+![Fastest CPU vs OpenCL at N=10⁹ (uint64)](results_m3max/results_10e9.png)
 
 > `opencl  →  736 seconds.` **More than twelve minutes.** ~**19× slower** than the CPU.
 
@@ -107,7 +107,7 @@ it with a long sequence of 32-bit ops. The CPU's ARM cores divide 64-bit nativel
 so they don't care. The GPU cared enormously. We taught every version a width knob
 (`is_prime_uint32` / `is_prime_uint64`, auto-selected by N), and re-ran the Billion:
 
-![Fastest CPU vs OpenCL at N=10⁹ (uint32)](results_10e9_u32.png)
+![Fastest CPU vs OpenCL at N=10⁹ (uint32)](results_m3max/results_10e9_u32.png)
 
 > `opencl uint32  →  49.8 seconds.` From 736 s to 50 s — **~15× faster**, gap to the
 > CPU shrunk from **19×** down to **~1.3×**, purely by changing an integer type.
@@ -139,7 +139,7 @@ streaming a 500 MB array through the very RAM the CPU sieve never touches, becau
 the CPU sieve is **cache-blocked**. The fix was to block the GPU the same way —
 sieve each segment in fast on-chip **`__local` memory**. That flipped it:
 
-![Sieve vs trial division at N=10⁹](results_sieve_10e9.png)
+![Sieve vs trial division at N=10⁹](results_m3max/results_sieve_10e9.png)
 
 The sieves sit a thousand times below the trial-division bars, and **`sieve_gpu`
 finally beats `sieve_cpu`.** On-chip blocking, not raw FLOPS, was the key.
@@ -151,7 +151,7 @@ finally beats `sieve_cpu`.** On-chip blocking, not raw FLOPS, was the key.
 To feel the full gap we ran the best non-sieve CPU version against the sieves at
 **N=10¹⁰** (π = 455,052,511):
 
-![N=10¹⁰ — trial division vs sieves](results_10e10.png)
+![N=10¹⁰ — trial division vs sieves](results_m3max/results_10e10.png)
 
 | version | time |
 |---|---|
@@ -172,7 +172,7 @@ The GPU sieve led at 10⁹ and 10¹⁰. *Surely* it would run away with it at 10
 
 It did not pull ahead. It **turned around.**
 
-![Sieve CPU vs GPU across N = 10³…10¹²](scale_sieve_3-12.png)
+![Sieve CPU vs GPU across N = 10³…10¹²](results_m3max/scale_sieve_3-12.png)
 
 | N | sieve_cpu | sieve_gpu | GPU/CPU |
 |---|---|---|---|
@@ -230,9 +230,9 @@ the last measurement made us curious about.
 
 ## Souvenirs (kept snapshots)
 
-`copri_10e8` · `sweep_10e8` · `results_10e7_u32` · `results_10e7_both` ·
-`results_10e9` · `results_10e9_u32` · `results_sieve_10e9` · `results_10e10` ·
-`scale_sieve_3-12` — each a `.csv` + `.png`, each a place we stood and measured.
+`results_m3max/copri_10e8` · `results_m3max/sweep_10e8` · `results_m3max/results_10e7_u32` · `results_m3max/results_10e7_both` ·
+`results_m3max/results_10e9` · `results_m3max/results_10e9_u32` · `results_m3max/results_sieve_10e9` · `results_m3max/results_10e10` ·
+`results_m3max/scale_sieve_3-12` — each a `.csv` + `.png`, each a place we stood and measured.
 
 *Largest number reached: 10¹². Primes counted there: 37,607,912,018. Lines of GPU
 code that mattered most: the ones that moved the working set on-chip.*

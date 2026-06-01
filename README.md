@@ -168,13 +168,13 @@ partition,10000000,auto,64,2,664579,67.398,67.985,9.32
 
 ```sh
 python3 plot.py                       # results.csv -> results.png
-python3 plot.py -i copri_10e8.csv -o copri_10e8.png
+python3 plot.py -i results_m3max/copri_10e8.csv -o results_m3max/copri_10e8.png
 python3 plot.py --show                # also open an interactive window
 ```
 
 Two panels share the version axis: best runtime (log scale) and speedup vs
 `seq`; the fastest version is highlighted. A saved snapshot of the 10⁸ run lives
-in `copri_10e8.csv` / `copri_10e8.png`.
+in `results_m3max/copri_10e8.csv` / `results_m3max/copri_10e8.png`.
 
 ## Output files & naming convention
 
@@ -185,7 +185,7 @@ keeping by a single character — **hyphen vs. underscore**:
 | Form | Example | Produced by | Git |
 |---|---|---|---|
 | **hyphen** = auto-timestamped run | `results-20260531-172143.csv`, `sweep-20260531-172143.png` | the **default** output of `run.py` / `sweep.py` (`results-<YYYYmmdd-HHMMSS>` / `sweep-<…>`); the `.png` inherits the stamp | **ignored** (`*-*.csv/png`) |
-| **underscore** = named snapshot | `copri_10e8.csv`, `sweep_10e8.png` | you, deliberately — via `-o name.csv` or by renaming a timestamped file | **tracked** |
+| **underscore** = named snapshot | `results_m3max/copri_10e8.csv`, `results_m3max/sweep_10e8.png` | you, deliberately — via `-o name.csv` or by renaming a timestamped file | **tracked** |
 
 So every run is preserved on disk under its own timestamp, git stays free of
 benchmark clutter, and promoting a run to a permanent, tracked snapshot is just
@@ -195,7 +195,7 @@ a rename with an underscore (or `-o sweep_<label>.csv`). Passing an explicit
 ## Sample results (Apple M3 Max, N = 10⁷, uint32)
 
 `auto` picks uint32 for N = 10⁷, so this is what `python3 run.py -n 10000000`
-prints (snapshot: `results_10e7_u32.*`):
+prints (snapshot: `results_m3max/results_10e7_u32.*`):
 
 ```
 version              best_ms   median_ms   speedup
@@ -218,7 +218,7 @@ version — the algorithm matters far more than the parallelization. At this sma
 N the CPU sieve also beats the GPU sieve (kernel-launch overhead); the GPU sieve
 only pulls ahead at N≈10⁹ (see [Sieve](#sieve--when-the-gpu-finally-wins)).
 
-The gap is most stark at the **N=10¹⁰ capstone** (snapshot `results_10e10.*`):
+The gap is most stark at the **N=10¹⁰ capstone** (snapshot `results_m3max/results_10e10.*`):
 the best parallel trial-division CPU version takes **~17.5 minutes**, while
 `sieve_gpu` counts the same π(10¹⁰)=455,052,511 in **~0.35 s** — a ~**3000×**
 algorithm gap. Details in [Sieve](#sieve--when-the-gpu-finally-wins).
@@ -261,8 +261,8 @@ So most of the "GPU loses" result earlier is really "64-bit integer division is
 the wrong tool", not "the GPU is useless".
 
 **At the headline scale (N=10⁹)** the same effect is decisive. Comparing the
-fastest CPU version against the GPU (snapshots `results_10e9.*` vs
-`results_10e9_u32.*`):
+fastest CPU version against the GPU (snapshots `results_m3max/results_10e9.*` vs
+`results_m3max/results_10e9_u32.*`):
 
 | version | uint64 | uint32 |
 |---|---|---|
@@ -302,7 +302,7 @@ version ~55 ms. The algorithm change is ~**1000×** — far more than the ~11× 
 16 cores buy. *Pick the right algorithm before you parallelize.*
 
 **2. The right algorithm is what lets the GPU win.** At N=10⁹ (snapshot
-`results_sieve_10e9.*`):
+`results_m3max/results_sieve_10e9.*`):
 
 ```
 version       best_ms        note
@@ -319,7 +319,7 @@ the direct answer to "[would NVIDIA be better / is the Mac GPU weak]" — the GP
 was never the problem, *trial division* was. Give the GPU a regular,
 division-free, bandwidth-bound kernel and it pulls ahead.
 
-**The gap only widens with scale.** At N=10¹⁰ (snapshot `results_10e10.*`) the
+**The gap only widens with scale.** At N=10¹⁰ (snapshot `results_m3max/results_10e10.*`) the
 contrast becomes absurd — the best parallel trial-division CPU version takes
 **17.5 minutes**, the sieves under **0.4 s**:
 
@@ -353,7 +353,7 @@ report `u64` and ignore `-w`.
 
 "Bigger N → GPU wins by more" sounds obvious, and is **wrong**. `scale.py` fixes
 the two sieves and varies the *problem size* N = 10ⁿ (snapshot
-`scale_sieve_3-12.*`, n = 3…12):
+`results_m3max/scale_sieve_3-12.*`, n = 3…12):
 
 ```sh
 python3 scale.py --exp 3-12       # plots runtime vs N and gpu/cpu speedup vs N
@@ -410,7 +410,7 @@ and a matching `.png`, a two-panel line plot: speedup vs threads (with an ideal
 
 Both runners timestamp their **default** output filenames, so the (often slow
 to produce) result files are never accidentally clobbered. Auto-timestamped
-files are git-ignored; rename one (e.g. `sweep_10e8.csv`, underscore) to keep it
+files are git-ignored; rename one (e.g. `results_m3max/sweep_10e8.csv`, underscore) to keep it
 as a tracked snapshot.
 
 ### The striping trap — cyclic distribution can collide with the data
@@ -462,19 +462,25 @@ Tracked result sets (each a `.csv` + a `.png`), kept because they were slow to
 produce and each isolates one lesson. Underscored names are deliberate snapshots
 (timestamped throwaway runs are git-ignored — see the naming convention above).
 
+All of these live under **`results_m3max/`** — the machine they were measured on.
+The numbers are hardware-specific, so if you reproduce the experiment on another
+machine, collect *its* results into a sibling directory named for it
+(`results_<machine>/`, e.g. `results_rtx4090/`) rather than overwriting these.
+
 | Snapshot | N | What it shows |
 |---|---|---|
-| `copri_10e8` | 10⁸ | baseline comparison of all versions (uint64) — `atomic_dynamic`/`openmp` win, GPU loses |
-| `sweep_10e8` | 10⁸ | thread-scaling sweep: speedup & efficiency vs core count, the P/E-core knee, the striping trap |
-| `results_10e7_u32` | 10⁷ | all versions in uint32 — the GPU becomes competitive (10.4×) |
-| `results_10e7_both` | 10⁷ | every version at u32 **and** u64 side by side — CPU a wash, `opencl` swings ~12× |
-| `results_10e9` | 10⁹ | fastest CPU vs GPU, **uint64** — GPU ~19× slower (736 s) |
-| `results_10e9_u32` | 10⁹ | same, **uint32** — GPU gap shrinks to ~1.3× (49.8 s) |
-| `results_sieve_10e9` | 10⁹ | sieve vs trial division — sieve ~1000× faster, `sieve_gpu` overtakes `sieve_cpu` |
-| `results_10e10` | 10¹⁰ | **capstone**: trial-division CPU ~17.5 min vs sieves ~0.35 s (~3000×) |
-| `scale_sieve_3-12` | 10³–10¹² | sieve CPU-vs-GPU scaling: the GPU's ~10⁹–10¹⁰ **sweet spot** and the reversal beyond |
+| `results_m3max/copri_10e8` | 10⁸ | baseline comparison of all versions (uint64) — `atomic_dynamic`/`openmp` win, GPU loses |
+| `results_m3max/sweep_10e8` | 10⁸ | thread-scaling sweep: speedup & efficiency vs core count, the P/E-core knee, the striping trap |
+| `results_m3max/results_10e7_u32` | 10⁷ | all versions in uint32 — the GPU becomes competitive (10.4×) |
+| `results_m3max/results_10e7_both` | 10⁷ | every version at u32 **and** u64 side by side — CPU a wash, `opencl` swings ~12× |
+| `results_m3max/results_10e9` | 10⁹ | fastest CPU vs GPU, **uint64** — GPU ~19× slower (736 s) |
+| `results_m3max/results_10e9_u32` | 10⁹ | same, **uint32** — GPU gap shrinks to ~1.3× (49.8 s) |
+| `results_m3max/results_sieve_10e9` | 10⁹ | sieve vs trial division — sieve ~1000× faster, `sieve_gpu` overtakes `sieve_cpu` |
+| `results_m3max/results_10e10` | 10¹⁰ | **capstone**: trial-division CPU ~17.5 min vs sieves ~0.35 s (~3000×) |
+| `results_m3max/scale_sieve_3-12` | 10³–10¹² | sieve CPU-vs-GPU scaling: the GPU's ~10⁹–10¹⁰ **sweet spot** and the reversal beyond |
 
-Re-chart any of them with `python3 plot.py -i <name>.csv -o <name>.png`.
+Re-chart any of them with
+`python3 plot.py -i results_m3max/<name>.csv -o results_m3max/<name>.png`.
 
 ## Layout
 
@@ -490,4 +496,5 @@ run.py                  per-version runner → results.csv (+ --plot, -w width)
 plot.py                 bar chart of a results.csv
 sweep.py                thread-scaling sweep → sweep.csv + sweep.png
 scale.py                problem-size sweep (N=10^n) → scale.csv + scale.png
+results_m3max/          kept snapshots for this machine (.csv + .png)
 ```
