@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
         pool.reserve(P);
 
         for (unsigned t = 0; t < P; ++t) {
-            pool.emplace_back([&partial, hi, P, t, w] {
+            pool.emplace_back([&partial, lo, hi, P, t, w] {
                 uint64_t c = 0;
                 for (uint64_t n = lo + t; n <= hi; n += P)
                     if (is_prime_w(n, w)) ++c;

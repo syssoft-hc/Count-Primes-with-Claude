@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
         pool.reserve(P);
 
         for (unsigned t = 0; t < P; ++t) {
-            pool.emplace_back([&cursor, &partial, hi, t, w] {
+            pool.emplace_back([&cursor, &partial, hi, t, w, CHUNK] {
                 uint64_t c = 0;
                 for (;;) {
                     const uint64_t base = cursor.fetch_add(CHUNK, std::memory_order_relaxed);

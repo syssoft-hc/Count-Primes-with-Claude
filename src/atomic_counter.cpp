@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
         pool.reserve(P);
 
         for (unsigned t = 0; t < P; ++t) {
-            pool.emplace_back([&count, hi, P, t, w] {
+            pool.emplace_back([&count, lo, hi, P, t, w] {
                 for (uint64_t n = lo + t; n <= hi; n += P)
                     if (is_prime_w(n, w))
                         // Hot, contended increment on a shared cache line.

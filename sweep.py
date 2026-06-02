@@ -25,16 +25,14 @@ by default -- a thread sweep does not apply to them.
 """
 import argparse
 import csv
-import shutil
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-# Imported so the actual run/parse logic lives in exactly one place.
-from run import BIN, run_one, discover_binaries
+# Imported so the actual run/parse/build logic lives in exactly one place.
+from run import BIN, run_one, discover_binaries, build_default
 
 # Versions whose thread count is meaningfully controllable via argv[2].
 SWEEPABLE = ["partition", "stripe", "atomic_counter", "atomic_dynamic",
@@ -129,14 +127,8 @@ def main():
         print("note: 1 not in --points, so speedup is relative to the smallest "
               f"thread count ({threads[0]}).", file=sys.stderr)
 
-    if not args.no_build:
-        if shutil.which("make") is None:
-            print("make not found; use --no-build", file=sys.stderr)
-            return 1
-        print("building (make)...")
-        if subprocess.run(["make"], cwd=ROOT).returncode != 0:
-            print("build failed", file=sys.stderr)
-            return 1
+    if not args.no_build and not build_default():
+        return 1
 
     built = set(discover_binaries())
     want = args.versions if args.versions else SWEEPABLE

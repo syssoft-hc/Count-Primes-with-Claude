@@ -19,6 +19,7 @@ writes results.csv (override with -o).
 import argparse
 import csv
 import json
+import os
 import shutil
 import statistics
 import subprocess
@@ -28,6 +29,22 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 BIN = ROOT / "bin"
+IS_WINDOWS = os.name == "nt"
+
+if IS_WINDOWS:
+    # Windows consoles/pipes default to cp1252, which can't encode the non-ASCII
+    # characters our tables and plot titles use (e.g. "≤"). Force UTF-8 so a
+    # stray print never aborts a long run. Imported by sweep.py/scale.py too.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
+
+def bin_path(name):
+    """Path to a built binary, adding the .exe suffix on Windows."""
+    return BIN / (name + ".exe") if IS_WINDOWS else BIN / name
 
 # Canonical order in which to present versions (others appended alphabetically).
 ORDER = ["seq", "partition", "stripe", "atomic_counter",
@@ -42,11 +59,106 @@ U32_SAFE_MAX = 4_000_000_000
 def discover_binaries():
     if not BIN.is_dir():
         return []
-    found = {p.name for p in BIN.iterdir()
-             if p.is_file() and p.stat().st_mode & 0o111}
+    if IS_WINDOWS:
+        # Windows has no executable bit; match bin\*.exe and drop the suffix.
+        found = {p.stem for p in BIN.iterdir()
+                 if p.is_file() and p.suffix.lower() == ".exe"}
+    else:
+        found = {p.name for p in BIN.iterdir()
+                 if p.is_file() and p.stat().st_mode & 0o111}
     ordered = [v for v in ORDER if v in found]
     ordered += sorted(found - set(ORDER))
     return ordered
+
+
+def _msvc_env(vcvars):
+    """Run vcvars64.bat and capture the environment it sets (so cl.exe, the
+    Windows SDK, and CUDA_PATH are visible to cmake). Returns an env dict or None.
+    """
+    # shell=True so cmd parses the quoted path itself; passing this as a list
+    # element would let Python backslash-escape the quotes, which cmd mishandles.
+    out = subprocess.run(f'"{vcvars}" >nul 2>&1 && set',
+                         capture_output=True, text=True, shell=True)
+    if out.returncode != 0:
+        return None
+    env = {}
+    for line in out.stdout.splitlines():
+        key, sep, val = line.partition("=")
+        if sep:
+            env[key] = val
+    return env or None
+
+
+def build_windows():
+    """Configure + build via CMake inside the MSVC environment.
+
+    Works from any shell: locate vcvars64.bat plus the cmake/ninja bundled with
+    Visual Studio, capture the MSVC environment, and drive CMakeLists.txt with it.
+    Returns True on success; otherwise tell the user to build manually and re-run
+    with --no-build.
+    """
+    pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    vswhere = Path(pf86) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    vs = ""
+    if vswhere.exists():
+        vs = subprocess.run(
+            [str(vswhere), "-latest", "-products", "*", "-requires",
+             "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+             "-property", "installationPath"],
+            capture_output=True, text=True).stdout.strip()
+    if not vs:
+        print("Visual Studio C++ toolset not found. Build manually with cmake, "
+              "then re-run with --no-build.", file=sys.stderr)
+        return False
+
+    vsp = Path(vs)
+    vcvars = vsp / "VC" / "Auxiliary" / "Build" / "vcvars64.bat"
+    cmake = (vsp / "Common7" / "IDE" / "CommonExtensions" / "Microsoft"
+             / "CMake" / "CMake" / "bin" / "cmake.exe")
+    ninja = (vsp / "Common7" / "IDE" / "CommonExtensions" / "Microsoft"
+             / "CMake" / "Ninja" / "ninja.exe")
+    if not cmake.exists():
+        cmake = Path(shutil.which("cmake") or "cmake")
+
+    env = _msvc_env(vcvars)
+    if env is None:
+        print(f"could not initialize MSVC environment ({vcvars})", file=sys.stderr)
+        return False
+
+    # Make nvcc discoverable so CMake's default GPU backend (CUDA when present)
+    # works from any shell, even one launched before the CUDA Toolkit install.
+    cuda_path = env.get("CUDA_PATH")
+    if not cuda_path:
+        roots = sorted(Path(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA").glob("v*"))
+        cuda_path = str(roots[-1]) if roots else None
+    if cuda_path:
+        env["PATH"] = str(Path(cuda_path) / "bin") + os.pathsep + env.get("PATH", "")
+
+    build_dir = ROOT / "build"
+    configure = [str(cmake), "-S", str(ROOT), "-B", str(build_dir),
+                 "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release"]
+    if ninja.exists():
+        configure.append(f"-DCMAKE_MAKE_PROGRAM={ninja}")
+    build = [str(cmake), "--build", str(build_dir)]
+
+    print("building (cmake + ninja via MSVC)...")
+    for step in (configure, build):
+        if subprocess.run(step, env=env).returncode != 0:
+            print("build failed", file=sys.stderr)
+            return False
+    return True
+
+
+def build_default():
+    """Build every version for the current platform (Windows: CMake/MSVC; else
+    `make`). Shared by run.py, sweep.py and scale.py. Returns True on success."""
+    if IS_WINDOWS:
+        return build_windows()
+    if shutil.which("make") is None:
+        print("make not found; use --no-build", file=sys.stderr)
+        return False
+    print("building (make)...")
+    return subprocess.run(["make"], cwd=ROOT).returncode == 0
 
 
 def run_one(name, n, threads, repeats, width="auto"):
@@ -55,7 +167,7 @@ def run_one(name, n, threads, repeats, width="auto"):
     Returns (count, [times_ms], width_bits) or None. `width` is one of
     "auto"/"u32"/"u64" and is passed through to the binary.
     """
-    cmd = [str(BIN / name), str(n)]
+    cmd = [str(bin_path(name)), str(n)]
     if threads:
         cmd.append(str(threads))
     if width and width != "auto":
@@ -114,14 +226,8 @@ def main():
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         args.output = str(ROOT / f"results-{stamp}.csv")
 
-    if not args.no_build:
-        if shutil.which("make") is None:
-            print("make not found; use --no-build", file=sys.stderr)
-            return 1
-        print("building (make)...")
-        if subprocess.run(["make"], cwd=ROOT).returncode != 0:
-            print("build failed", file=sys.stderr)
-            return 1
+    if not args.no_build and not build_default():
+        return 1
 
     versions = discover_binaries()
     if args.only:

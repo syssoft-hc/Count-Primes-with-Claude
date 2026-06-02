@@ -23,14 +23,12 @@ Examples
 """
 import argparse
 import csv
-import shutil
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-from run import run_one, discover_binaries  # reuse the runner
+from run import run_one, discover_binaries, build_default  # reuse the runner
 
 # Known prime counts pi(10^n), for the correctness check.
 PI = {3: 168, 4: 1229, 5: 9592, 6: 78498, 7: 664579, 8: 5761455,
@@ -116,12 +114,8 @@ def main():
         args.output = str(ROOT / f"scale-{stamp}.csv")
     exps = parse_exp(args.exp)
 
-    if not args.no_build:
-        if shutil.which("make") is None:
-            print("make not found; use --no-build", file=sys.stderr); return 1
-        print("building (make)...")
-        if subprocess.run(["make"], cwd=ROOT).returncode != 0:
-            print("build failed", file=sys.stderr); return 1
+    if not args.no_build and not build_default():
+        return 1
 
     built = set(discover_binaries())
     versions = [v for v in args.versions if v in built]

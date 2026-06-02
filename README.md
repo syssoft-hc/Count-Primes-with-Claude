@@ -116,6 +116,31 @@ make clean
 - **OpenCL** uses the macOS framework (deprecated but functional). On Linux,
   install an OpenCL ICD and adjust the link flags in the Makefile.
 
+### Windows (CMake + MSVC, GPU via CUDA)
+
+The Unix `Makefile` is macOS/Linux only. On Windows an **additive**
+`CMakeLists.txt` builds the same sources (the macOS path is untouched). It needs
+**Visual Studio Build Tools** (MSVC + the C++ workload) and, for the GPU
+versions, the **CUDA Toolkit** (which also supplies the OpenCL headers/lib).
+
+```bat
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+Binaries land in `bin\<name>.exe`. You usually don't even call cmake yourself:
+`run.py` locates MSVC + cmake and configures/builds for you, so from any shell
+
+```bat
+python run.py -n 10000000
+```
+
+just works. The GPU versions (`opencl`, `sieve_gpu`, `sieve_gpu_barrett`) are
+built from **CUDA** `.cu` sources on Windows and from **OpenCL** on macOS, under
+the *same* binary names, so results compare directly across machines. Choose the
+backend with `-DCOPRI_GPU_BACKEND=cuda|opencl|off` (default: CUDA when a CUDA
+compiler is found, else OpenCL). `openmp`/`omp_target` are not built on Windows.
+
 ### `omp_target` and GPU offload — read this before trusting the number
 
 `omp_target` uses `#pragma omp target teams distribute parallel for`, the OpenMP
@@ -527,13 +552,18 @@ Re-chart any of them with
 common/prime.hpp        shared is_prime() — the ONE primality test
 common/bench.hpp        arg parsing, timing, uniform JSON/stderr output
 common/sieve_common.hpp base primes for the sieve versions
-src/*.cpp               one file per approach
+src/*.cpp               one file per approach (CPU + OpenCL GPU hosts)
 src/prime_kernel.cl     OpenCL mirror of is_prime() (u32 + u64 kernels)
 src/sieve_kernel.cl     OpenCL segmented sieve (blocked in __local memory)
-Makefile                auto-detects OpenMP / OpenCL
+src/*.cu                CUDA ports of the GPU versions (Windows/NVIDIA)
+src/prime_kernel.cuh    CUDA mirror of is_prime() kernels
+src/sieve_kernel.cuh    CUDA segmented sieve (blocked in __shared__ memory)
+Makefile                macOS/Linux build; auto-detects OpenMP / OpenCL
+CMakeLists.txt          cross-platform build (Windows MSVC + CUDA/OpenCL)
 run.py                  per-version runner → results.csv (+ --plot, -w width)
 plot.py                 bar chart of a results.csv
 sweep.py                thread-scaling sweep → sweep.csv + sweep.png
 scale.py                problem-size sweep (N=10^n) → scale.csv + scale.png
-results_m3max/          kept snapshots for this machine (.csv + .png)
+results_m3max/          kept snapshots for the Apple M3 Max (.csv + .png)
+results_rtx2080ti/      kept snapshots for the Windows RTX 2080 Ti (.csv + .png)
 ```

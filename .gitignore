@@ -1,4 +1,5 @@
 bin/
+build/
 # auto-timestamped benchmark outputs (hyphen). Named snapshots like
 # copri_10e8.* / sweep_10e8.* use an underscore and stay tracked.
 results.csv

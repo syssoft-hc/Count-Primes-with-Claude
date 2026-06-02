@@ -11,6 +11,49 @@
 
 ---
 
+## 0. STATUS — Windows + CUDA port COMPLETE (2026-06-02)
+
+The port planned in §6 is **done and validated** on the Windows box (Intel
+i9-7900X, 10c/20t, 64 GB; **NVIDIA RTX 2080 Ti**, sm_75; CUDA 13.3, MSVC 14.4,
+Python 3.13). Summary of what changed (all additive — the macOS `Makefile`,
+`common/`, and `#ifdef __APPLE__` paths are untouched):
+
+- **Build:** new `CMakeLists.txt`. GPU versions build from CUDA `.cu` on Windows
+  and OpenCL on macOS under the **same binary names**; select with
+  `-DCOPRI_GPU_BACKEND=cuda|opencl|off` (default: CUDA if a CUDA compiler is
+  found, else OpenCL). `openmp`/`omp_target` are not built on Windows.
+- **CUDA sources:** `src/{opencl,sieve_gpu,sieve_gpu_barrett}.cu` +
+  `src/prime_kernel.cuh`, `src/sieve_kernel.cuh`, `src/cuda_util.cuh` — direct
+  ports of the OpenCL kernels per the §6C table (get_global_id →
+  blockIdx*blockDim+threadIdx, __local → extern __shared__, barrier →
+  __syncthreads, mul_hi → __umul64hi). nvcc compiles kernels at build time, so
+  there is no runtime KERNEL_PATH.
+- **Tooling:** `run.py`/`sweep.py`/`scale.py` are cross-platform — discover
+  `bin\*.exe`, build via a shared `build_default()` that captures the MSVC
+  environment and drives cmake/ninja from any shell, and force UTF-8 stdout on
+  Windows. Three portable C++ fixes (MSVC C3493 lambda captures in
+  stripe/atomic_counter/atomic_dynamic).
+- **Results:** `results_rtx2080ti/` — `run_10e8`, `sweep_10e7`,
+  `scale_sieve_3-11` (.csv + .png). All counts verified against the π(10ⁿ) oracle.
+
+**Headline numbers (RTX 2080 Ti, CUDA):**
+- N=10⁸: `opencl` (CUDA trial division) 691 ms = **69×** over `seq`;
+  `sieve_gpu_barrett` 2.5 ms (~19,000× over `seq`).
+- N=10⁹: `opencl` 21.4 s (vs M3 Max OpenCL 49.8 s); `sieve_gpu_barrett` 19.2 ms
+  vs `sieve_cpu` 90 ms (~4.7×).
+- Sieve scaling 10³–10¹¹: the GPU sieve **never reverses** here — 5–11× over the
+  CPU sieve across the whole range (~7.3× at 10¹¹), unlike the M3 Max where plain
+  `sieve_gpu` fell to 0.75× at 10¹¹. Discrete VRAM + a native 64-bit integer
+  divide remove the Apple GPU's wall, as predicted below. Barrett still wins, just
+  by a smaller margin than on Apple.
+
+**Not done yet:** OpenCL-vs-CUDA on the *same* RTX (the CUDA build replaces the
+OpenCL binaries under identical names; build `-DCOPRI_GPU_BACKEND=opencl`
+separately to get both, ideally under `*_ocl` labels). Branch `windows-cuda-port`
+is committed locally but not pushed.
+
+---
+
 ## 1. How to transfer & resume
 
 - **Preferred:** on the Windows box, `git clone git@github.com:syssoft-hc/Count-Primes-with-Claude.git`
