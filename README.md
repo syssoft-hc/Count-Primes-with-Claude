@@ -76,7 +76,7 @@ OpenMP, GPU offload) compared along the way.
 | `atomic_dynamic` | atomic **work-stealing** cursor | dynamic scheduling: atomic per *chunk* → balance *and* low contention |
 | `openmp` | `#pragma omp parallel for` (optional) | the high-level equivalent of the hand-rolled versions |
 | `omp_target` | `#pragma omp target` GPU **offload** (optional) | the offload programming model — and why it falls back to the CPU here (see note) |
-| `opencl` | GPU, striped grid + host reduction | when offloading to the GPU **does and doesn't** pay off |
+| `opencl` ‡ | GPU, striped grid + host reduction | when offloading to the GPU **does and doesn't** pay off |
 | `sieve_cpu` | parallel **segmented sieve** (std::thread) † | algorithm beats parallelism — ~1000× faster than trial division |
 | `sieve_gpu` | segmented sieve in GPU `__local` memory † | the right algorithm is what finally makes the **GPU win** |
 | `sieve_gpu_barrett` | GPU sieve with **Barrett reduction** † | trade the per-segment 64-bit division for multiplies → GPU keeps winning at large N |
@@ -84,6 +84,11 @@ OpenMP, GPU offload) compared along the way.
 † `sieve_cpu` / `sieve_gpu` / `sieve_gpu_barrett` deliberately **break the shared-`is_prime()` rule** —
 a sieve marks composites instead of testing each candidate. They are the answer
 to "could the GPU ever win here?" (yes — see [Sieve](#sieve--when-the-gpu-finally-wins)).
+
+‡ `opencl` is a **kept name meaning "GPU trial division"**, not a guarantee of
+the backend: it's OpenCL on macOS but a **CUDA** reimplementation on NVIDIA (same
+for the `sieve_gpu*` rows). So cross-machine GPU comparisons vary device *and*
+API/runtime together — see [Windows build](#windows-cmake--msvc-gpu-via-cuda).
 
 All binaries share one CLI and output format:
 
@@ -140,6 +145,18 @@ built from **CUDA** `.cu` sources on Windows and from **OpenCL** on macOS, under
 the *same* binary names, so results compare directly across machines. Choose the
 backend with `-DCOPRI_GPU_BACKEND=cuda|opencl|off` (default: CUDA when a CUDA
 compiler is found, else OpenCL). `openmp`/`omp_target` are not built on Windows.
+
+> ⚠️ **The `opencl` label is a kept name, not the backend.** It means "GPU
+> trial division" throughout this project. On macOS that binary really is
+> OpenCL (`src/opencl.cpp`); on Windows/NVIDIA it is a **CUDA** reimplementation
+> of the same striped algorithm (`src/opencl.cu`) that keeps the `opencl` name
+> only so the version columns line up for plotting. The same is true of
+> `sieve_gpu` / `sieve_gpu_barrett` (OpenCL on macOS, CUDA on NVIDIA).
+> **Consequence:** any cross-machine GPU comparison (e.g. M3 Max vs RTX 2080 Ti)
+> mixes **two** variables — the device *and* the API/runtime (Apple OpenCL vs
+> native CUDA). A gap on a GPU row is *device + backend combined*, never the
+> hardware alone. CPU rows (`seq`, `sieve_cpu`, …) are the same C++ on both and
+> are the only truly like-for-like cross-machine numbers.
 
 ### `omp_target` and GPU offload — read this before trusting the number
 

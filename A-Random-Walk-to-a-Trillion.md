@@ -282,6 +282,15 @@ across the Mac: MSVC refused three lambdas until we named a captured constant
 (error `C3493`), and a stray `≤` in a status line crashed Python under Windows'
 ancient code page. An afternoon of paperwork, not an expedition.
 
+> **A note on the name before we compare anything.** `opencl` is a *kept label*
+> meaning "GPU trial division," not a promise about the backend. On the Mac it
+> really is OpenCL; here it's the **CUDA** port above, wearing the old name so the
+> result columns line up for plotting (same for `sieve_gpu` / `sieve_gpu_barrett`).
+> So every Mac-vs-RTX GPU number below moves **two** things at once — the *silicon*
+> **and** the *runtime* (Apple OpenCL → native CUDA). A gap on a GPU row is that
+> pair combined, never the hardware alone. Only the CPU rows are the same binary on
+> both shores, and so the only strictly like-for-like crossing.
+
 Then we re-ran the Billion. The trial-division GPU — same striped grid, now in
 CUDA — counted π(10⁹) in **21.4 s**, against the Mac's 49.8 s for the identical
 idea: a bigger GPU, same algorithm, ~2.3× for free. And the full N=10⁸ board shows
