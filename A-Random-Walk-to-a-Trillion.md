@@ -262,6 +262,86 @@ far past 10¹²). But that's a trip for another day. This one is done.
 
 ---
 
+# Part II — A second expedition: the same code on a different continent (Windows + CUDA)
+
+> *We'd written "this one is done." We were wrong. A box turned up — an Intel
+> i9-7900X and an **NVIDIA RTX 2080 Ti** — and with it the question Leg 5 left
+> lying on the trail: "would a real discrete GPU change the story?" The honest way
+> to answer was to pack the exact same code, sail to a different continent, and
+> re-walk the hardest stretch. So we did.*
+
+## Leg 9 — The villain has no teeth here
+
+Getting ashore was almost anticlimactic. The CPU versions are plain C++17 and just
+compiled. The GPU versions had to change dialects — OpenCL → **CUDA** — but that
+was nearly mechanical: `get_global_id` → `blockIdx.x*blockDim.x+threadIdx.x`,
+`__local` → `extern __shared__`, `barrier()` → `__syncthreads()`, `mul_hi` →
+`__umul64hi`. The kernels read almost line-for-line. The biggest *porting*
+obstacles of the whole leg were comically small next to the villain we'd chased
+across the Mac: MSVC refused three lambdas until we named a captured constant
+(error `C3493`), and a stray `≤` in a status line crashed Python under Windows'
+ancient code page. An afternoon of paperwork, not an expedition.
+
+Then we re-ran the Billion. The trial-division GPU — same striped grid, now in
+CUDA — counted π(10⁹) in **21.4 s**, against the Mac's 49.8 s for the identical
+idea: a bigger GPU, same algorithm, ~2.3× for free. And the full N=10⁸ board shows
+the trip's whole hierarchy intact on new silicon:
+
+![All versions at N=10⁸ on the RTX 2080 Ti](results_rtx2080ti/run_10e8.png)
+
+> `opencl` (CUDA trial division) reaches **69× over `seq`** — yet
+> `sieve_gpu_barrett` finishes the same count in **2.5 ms, ~19,000× over `seq`.**
+> The algorithm still dwarfs everything; that postcard reprints on any paper.
+
+The thread-scaling sweep was a pleasant déjà vu — and quiet proof that *some*
+lessons are about the problem, not the machine:
+
+![Thread scaling at N=10⁷ on the i9-7900X](results_rtx2080ti/sweep_10e7.png)
+
+**The striping trap reproduced exactly.** `stripe` and `atomic_counter` sit at
+~0.5 efficiency on even thread counts on the i9, just as they did on the M3 —
+because an even stride sharing the factor 2 with the integers is a property of the
+*decomposition*, not the silicon. `atomic_dynamic` again tracked the ideal line.
+The numbers are new; the shape is identical.
+
+But the real reason we sailed here was Leg 7's reversal — the moment the GPU sieve
+*turned around* past 10¹⁰ because it kept paying for an emulated 64-bit divide. So
+we re-ran the problem-size sweep, 10³ to 10¹¹, and held our breath:
+
+![Sieve CPU vs GPU across N = 10³…10¹¹ on the RTX 2080 Ti](results_rtx2080ti/scale_sieve_3-11.png)
+
+| N | sieve_cpu | sieve_gpu | sieve_gpu_barrett | gpu/cpu | barrett/cpu |
+|---|---|---|---|---|---|
+| 10⁹ | 90 ms | 20.0 ms | 19.2 ms | 4.5× | 4.7× |
+| 10¹⁰ | 974 ms | 148 ms | 136 ms | 6.6× | 7.2× |
+| 10¹¹ | 12.5 s | 1.98 s | 1.70 s | **6.3×** | **7.3×** |
+
+**The reversal never came.** Where the Apple GPU's plain sieve cratered to 0.75× at
+10¹¹, the RTX's plain sieve is still **6.3× ahead** there — and *climbing*. The
+sweet-spot-and-collapse shape from Leg 7 is simply gone; what's left is a widening
+win. The reason is the whole saga restated in reverse: the RTX 2080 Ti has a
+**native 64-bit integer divide** and far more on-chip memory per block, so the
+`start % p` that strangled the Apple GPU is just one instruction here. The villain
+we chased across eight legs and named three times was never "GPUs," and not even
+"division" in the abstract — it was *one missing instruction on one particular
+GPU.* Give the hardware that instruction and the antagonist evaporates.
+
+Barrett reduction still helps — 7.3× vs 6.3× at 10¹¹ — but its role is demoted from
+*hero* to *nice-to-have*: when the divide isn't catastrophic, removing it only
+trims the edges. The trick that *won* the Mac trip merely *polishes* this one.
+
+So Leg 5's open question finally has its answer. Yes, a real discrete GPU changes
+the story — but not by being magic. It changes it by *not having the one weakness
+the whole saga was about.* And the deepest lesson survives the crossing untouched:
+on both continents the sieve beats trial division a thousandfold, and the algorithm
+you bring matters more than the cores or the card you bring it to.
+
+*(One road still unwalked on this continent: running OpenCL and CUDA side by side
+on the very same RTX, to separate "the API" from "the hardware." A trip for another
+afternoon.)*
+
+---
+
 ## Field notes (the lessons, in the order we learned them)
 
 1. **Granularity matters** — an atomic per *result* costs more than an atomic per *chunk*.
@@ -274,12 +354,18 @@ far past 10¹²). But that's a trip for another day. This one is done.
 8. **GPUs have an operating window**, not a monotonic advantage — bounded by overhead below and integer-division throughput above.
 9. **The recurring villain** — 64-bit integer division explained almost every disappointment on the trip.
 10. **Route around the weakness** — Barrett reduction turned the GPU's hated divide into multiplies and widened the window into a durable ~2× win to 10¹².
+11. **Know the villain's address** *(Part II)* — on a GPU with a *native* 64-bit divide (RTX 2080 Ti) the catastrophe never happens and the sieve's reversal disappears. The enemy was one missing instruction on one GPU, not "GPUs" — so Barrett drops from hero to nice-to-have.
+12. **Lessons travel; numbers don't** *(Part II)* — the striping trap reproduced exactly on the i9, because it's a property of the decomposition, not the silicon; but every runtime is hardware-specific, so each machine gets its own re-measured map (`results_<machine>/`).
 
 ## Souvenirs (kept snapshots)
 
 `results_m3max/copri_10e8` · `results_m3max/sweep_10e8` · `results_m3max/results_10e7_u32` · `results_m3max/results_10e7_both` ·
 `results_m3max/results_10e9` · `results_m3max/results_10e9_u32` · `results_m3max/results_sieve_10e9` · `results_m3max/results_10e10` ·
 `results_m3max/scale_sieve_3-12` · `results_m3max/scale_sieve_barrett_3-12` — each a `.csv` + `.png`, each a place we stood and measured.
+
+From the second expedition (Windows + CUDA, RTX 2080 Ti): `results_rtx2080ti/run_10e8` ·
+`results_rtx2080ti/sweep_10e7` · `results_rtx2080ti/scale_sieve_3-11` — the same kind of
+souvenirs, photographed on a different continent.
 
 *Largest number reached: 10¹². Primes counted there: 37,607,912,018, in 56 seconds
 on the GPU. Lines of GPU code that mattered most: the ones that moved the working
