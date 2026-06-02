@@ -563,6 +563,13 @@ machine, collect *its* results into a sibling directory named for it
 Re-chart any of them with
 `python3 plot.py -i results_m3max/<name>.csv -o results_m3max/<name>.png`.
 
+A second set lives under **`results_rtx2080ti/`** (Intel i9-7900X + NVIDIA RTX
+2080 Ti, GPU via CUDA). For a side-by-side reading of the two platforms — where
+the M3 Max wins, where the discrete GPU does, and why Barrett matters far more on
+Apple — see **[`COMPARE-RESULTS.md`](COMPARE-RESULTS.md)**. (Mind the
+[`opencl`-label-is-CUDA caveat](#windows-cmake--msvc-gpu-via-cuda) when comparing
+GPU rows across machines.)
+
 ## Layout
 
 ```
