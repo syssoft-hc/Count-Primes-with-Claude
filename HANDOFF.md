@@ -47,10 +47,25 @@ Python 3.13). Summary of what changed (all additive — the macOS `Makefile`,
   divide remove the Apple GPU's wall, as predicted below. Barrett still wins, just
   by a smaller margin than on Apple.
 
-**Not done yet:** OpenCL-vs-CUDA on the *same* RTX (the CUDA build replaces the
-OpenCL binaries under identical names; build `-DCOPRI_GPU_BACKEND=opencl`
-separately to get both, ideally under `*_ocl` labels). Branch `windows-cuda-port`
-is committed locally but not pushed.
+**Not done yet:**
+- **`results_rtx2080ti/SPECS.md` — please create this on the Windows box.** The Mac
+  side now has [`results_m3max/SPECS.md`](results_m3max/SPECS.md) documenting that
+  machine's hardware + software environment; mirror it for the RTX box so the two
+  sets are comparable. Use the **same structure** (Machine / CPU / GPU / Memory /
+  OS / Toolchain + build flags) and capture values **live on the machine** (not from
+  this file): `wmic`/Task Manager or `Get-ComputerInfo` for CPU/RAM, `nvidia-smi`
+  for the GPU + driver, `nvcc --version` for the CUDA Toolkit, `cl.exe`/MSVC version,
+  `cmake --version`, `python --version` + matplotlib/numpy. Note the mirror-image
+  hardware fact: the **RTX 2080 Ti *has* a fast native 64-bit integer divide** (sm_75),
+  which is why Barrett is only a nice-to-have here — the opposite of the Apple note.
+- OpenCL-vs-CUDA on the *same* RTX (the CUDA build replaces the OpenCL binaries
+  under identical names; build `-DCOPRI_GPU_BACKEND=opencl` separately to get both,
+  ideally under `*_ocl` labels).
+
+Also new since the port: [`COMPARE-RESULTS.md`](COMPARE-RESULTS.md) (cross-platform
+M3 Max vs RTX comparison) and an `opencl`-label-is-CUDA caveat now documented in the
+README, travelogue, and that file. Branch `windows-cuda-port` has been merged to
+`master` and pushed.
 
 ---
 
