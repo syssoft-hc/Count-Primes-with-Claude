@@ -376,6 +376,12 @@ From the second expedition (Windows + CUDA, RTX 2080 Ti): `results_rtx2080ti/run
 `results_rtx2080ti/sweep_10e7` · `results_rtx2080ti/scale_sieve_3-11` — the same kind of
 souvenirs, photographed on a different continent.
 
+For the two continents laid side by side — where each platform wins, the honest
+~1.6× discrete-GPU sieve margin, and why Barrett mattered far more on Apple — see
+[`COMPARE-RESULTS.md`](COMPARE-RESULTS.md). (It carries the caveat this leg's
+numbers depend on: the `opencl`/`sieve_gpu*` labels are OpenCL on the Mac but CUDA
+on the RTX, so a GPU gap is *device and runtime together*, never the silicon alone.)
+
 *Largest number reached: 10¹². Primes counted there: 37,607,912,018, in 56 seconds
 on the GPU. Lines of GPU code that mattered most: the ones that moved the working
 set on-chip — and the three that turned a divide into a multiply.*
